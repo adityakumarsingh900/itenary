@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   DndContext,
@@ -17,9 +17,31 @@ import {
 } from '@dnd-kit/core';
 import { arrayMove, SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { addDaysInputValue, buildDateRows, normalizeDateRange, todayInputValue } from './utils/date';
+import { addDaysInputValue, adjustEndDate, adjustStartDate, buildDateRows, normalizeDateRange, todayInputValue } from './utils/date';
 import { clearPlannerState, loadPlannerState, savePlannerState } from './utils/storage';
-import { CellType, DateRow, PlannerCellMap, PlannerColumn, PlannerState, resolveCellType } from './types';
+import {
+  CellData,
+  CellType,
+  CellValue,
+  CommuteMode,
+  DateRow,
+  getCellAddress,
+  getCellLocation,
+  getCellPhoto,
+  getCellText,
+  normalizeCellValue,
+  PlannerCellMap,
+  PlannerColumn,
+  PlannerCommuteMap,
+  CommuteSegmentData,
+  PlannerState,
+  resolveCellType
+} from './types';
+import { PlaceSearchModalContent } from './components/PlaceSearchModalContent';
+import { CommuteModalContent } from './components/CommuteModalContent';
+import { CommuteBridge } from './components/CommuteBridge';
+import { calculateCommute, getCommuteModeEmoji } from './utils/commute';
+import { isGoogleMapsConfigured, loadGooglePlacesScript } from './utils/googlePlaces';
 
 type PageMode = 'setup' | 'planner';
 
@@ -63,21 +85,25 @@ function normalizePlannerState(state: PlannerState): {
   for (const [rowKey, order] of Object.entries(state.rowOrders ?? {})) {
     const rowCells = state.cells?.[rowKey] ?? {};
     const nextOrder: string[] = [];
-    const nextRowCells: Record<string, string> = {};
+    const nextRowCells: Record<string, CellValue> = {};
 
     for (const slotId of order) {
+      if (slotId.startsWith('travelling') || slotId.startsWith('travel')) {
+        continue;
+      }
       const isDefaultSlot = isSharedSlotId(slotId) || slotId.startsWith('slot-');
       const uniqueSlotId = isSharedSlotId(slotId) ? `${slotId}-${rowKey}` : slotId;
       const val = rowCells[slotId] ?? rowCells[uniqueSlotId] ?? '';
+      const textVal = getCellText(val);
 
       // Skip empty initial default template slots so plans start clean with no cells
-      if (isDefaultSlot && !val) {
+      if (isDefaultSlot && !textVal) {
         continue;
       }
 
       nextOrder.push(uniqueSlotId);
       cellTypes[uniqueSlotId] = resolveCellType(uniqueSlotId, state.cellTypes);
-      if (val) {
+      if (textVal) {
         nextRowCells[uniqueSlotId] = val;
       }
     }
@@ -201,18 +227,22 @@ function DraggableEditableCell({
   onDelete
 }: {
   slotId: string;
-  value: string;
+  value: CellValue;
   type: CellType;
   onOpenEdit: () => void;
   onDelete: () => void;
 }) {
   const cellId = getCellId(slotId);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: cellId });
+  const text = getCellText(value);
+  const photoUrl = type !== 'travelling' ? getCellPhoto(value) : undefined;
+  const address = type !== 'travelling' ? getCellAddress(value) : undefined;
+  const hasValue = Boolean(text);
 
   return (
     <div
       ref={setNodeRef}
-      className={`planner-cell-card planner-cell-card--${type} ${value ? 'planner-cell-card--filled' : 'planner-cell-card--empty'} ${isDragging ? 'planner-cell-card--dragging' : ''}`}
+      className={`planner-cell-card planner-cell-card--${type} ${hasValue ? 'planner-cell-card--filled' : 'planner-cell-card--empty'} ${photoUrl ? 'planner-cell-card--has-photo' : ''} ${isDragging ? 'planner-cell-card--dragging' : ''}`}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
@@ -231,15 +261,15 @@ function DraggableEditableCell({
         ⠿
       </button>
       <div
-        className={`planner-cell-content planner-cell-content--${type} ${value ? 'planner-cell-content--filled' : 'planner-cell-content--empty'}`}
+        className={`planner-cell-content planner-cell-content--${type} ${hasValue ? 'planner-cell-content--filled' : 'planner-cell-content--empty'} ${photoUrl ? 'planner-cell-content--has-photo' : ''}`}
         role="button"
         tabIndex={0}
         aria-label={
           type === 'travelling'
-            ? value ? `Commute: ${value}` : 'Add commute time'
+            ? text ? `Commute: ${text}` : 'Add commute time'
             : type === 'place'
-            ? value ? `Place: ${value}` : 'Add place'
-            : value ? `Point: ${value}` : 'Add point'
+            ? text ? `Place: ${text}` : 'Add place'
+            : text ? `Point: ${text}` : 'Add point'
         }
         onClick={onOpenEdit}
         onKeyDown={(event) => {
@@ -252,27 +282,29 @@ function DraggableEditableCell({
         {type === 'travelling' ? (
           <>
             <div className="travelling-icon-wrap" aria-hidden="true">
-              <svg
-                className="travelling-car-icon"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 10.9 2 11.2 2 11.5V16c0 .6.4 1 1 1h2" />
-                <circle cx="7" cy="17" r="2" />
-                <path d="M9 17h6" />
-                <circle cx="17" cy="17" r="2" />
-              </svg>
+              <span className="travelling-emoji-icon" style={{ fontSize: '1.25rem', lineHeight: 1 }}>
+                {typeof value === 'object' && value.commuteMode
+                  ? getCommuteModeEmoji(value.commuteMode)
+                  : '🚗'}
+              </span>
             </div>
             <div className="travelling-value-text">
-              {value || 'add commute time'}
+              {text || 'add commute time'}
             </div>
           </>
+        ) : photoUrl ? (
+          <div className="place-cell-card-layout">
+            <div className="place-cell-thumb-wrap">
+              <img src={photoUrl} alt="" className="place-cell-thumb" loading="lazy" />
+              <div className="place-cell-thumb-gradient" />
+            </div>
+            <div className="place-cell-details">
+              <div className="place-cell-text">{text}</div>
+              {address ? <div className="place-cell-subtext">{address}</div> : null}
+            </div>
+          </div>
         ) : (
-          value || (type === 'place' ? 'Add place' : 'Add point')
+          text || (type === 'place' ? 'Add place' : 'Add point')
         )}
       </div>
       <button
@@ -308,33 +340,39 @@ function DraggableEditableCell({
   );
 }
 
-function DragPreviewCard({ value, type }: { value: string; type: CellType }) {
+function DragPreviewCard({ value, type }: { value: CellValue; type: CellType }) {
+  const text = getCellText(value);
+  const photoUrl = type !== 'travelling' ? getCellPhoto(value) : undefined;
+  const address = type !== 'travelling' ? getCellAddress(value) : undefined;
+
   return (
-    <div className={`planner-cell-card planner-cell-card--drag-overlay planner-cell-card--${type}`}>
+    <div className={`planner-cell-card planner-cell-card--drag-overlay planner-cell-card--${type} ${photoUrl ? 'planner-cell-card--has-photo' : ''}`}>
       <div className="cell-drag-handle">⠿</div>
       {type === 'travelling' ? (
         <div className="planner-cell-content planner-cell-content--travelling planner-cell-content--filled">
           <div className="travelling-icon-wrap" aria-hidden="true">
-            <svg
-              className="travelling-car-icon"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 10.9 2 11.2 2 11.5V16c0 .6.4 1 1 1h2" />
-              <circle cx="7" cy="17" r="2" />
-              <path d="M9 17h6" />
-              <circle cx="17" cy="17" r="2" />
-            </svg>
+            <span className="travelling-emoji-icon" style={{ fontSize: '1.25rem', lineHeight: 1 }}>
+              {typeof value === 'object' && value.commuteMode
+                ? getCommuteModeEmoji(value.commuteMode)
+                : '🚗'}
+            </span>
           </div>
-          <div className="travelling-value-text">{value || 'add commute time'}</div>
+          <div className="travelling-value-text">{text || 'add commute time'}</div>
+        </div>
+      ) : photoUrl ? (
+        <div className="place-cell-card-layout">
+          <div className="place-cell-thumb-wrap">
+            <img src={photoUrl} alt="" className="place-cell-thumb" />
+            <div className="place-cell-thumb-gradient" />
+          </div>
+          <div className="place-cell-details">
+            <div className="place-cell-text">{text}</div>
+            {address ? <div className="place-cell-subtext">{address}</div> : null}
+          </div>
         </div>
       ) : (
         <div className={`planner-cell-content planner-cell-content--filled planner-cell-content--${type}`}>
-          {value || (type === 'place' ? 'Add place' : 'Add point')}
+          {text || (type === 'place' ? 'Add place' : 'Add point')}
         </div>
       )}
     </div>
@@ -346,6 +384,22 @@ function AddCellButton({ onClick }: { onClick: () => void }) {
     <button className="planner-cell-add" type="button" onClick={onClick} aria-label="Add new cell">
       <span aria-hidden="true">+</span>
     </button>
+  );
+}
+
+function InsertCellDivider({ onClick }: { onClick: () => void }) {
+  return (
+    <div className="planner-cell-divider">
+      <button
+        type="button"
+        className="cell-insert-button"
+        onClick={onClick}
+        title="Insert activity or commute here"
+        aria-label="Insert activity or commute here"
+      >
+        <span aria-hidden="true">+</span>
+      </button>
+    </div>
   );
 }
 
@@ -434,7 +488,12 @@ function SetupPage({
           </label>
           <label>
             To
-            <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+            <input
+              type="date"
+              value={endDate}
+              min={startDate || undefined}
+              onChange={(event) => setEndDate(event.target.value)}
+            />
           </label>
 
           <button className="primary-button setup-continue-button" type="submit">
@@ -467,7 +526,10 @@ function PlannerPage({
   onCellChange,
   onDeleteCell,
   onRowOrdersChange,
-  onCellsChange
+  onCellsChange,
+  onCellTypesChange,
+  commutes,
+  onCommutesChange
 }: {
   tripName: string;
   startDate: string;
@@ -476,6 +538,7 @@ function PlannerPage({
   rowOrders: Record<string, string[]>;
   cells: PlannerCellMap;
   cellTypes: Record<string, CellType>;
+  commutes?: PlannerCommuteMap;
   lastSavedAt: string | null;
   onBack: () => void;
   onTripReset: () => void;
@@ -483,31 +546,42 @@ function PlannerPage({
   onStartDateChange: (value: string) => void;
   onEndDateChange: (value: string) => void;
   onAddColumn: () => void;
-  onAddCell: (rowKey: string, type: CellType) => string;
+  onAddCell: (rowKey: string, type: CellType, insertIndex?: number) => string;
   onRenameColumn: (columnId: string, value: string) => void;
   onRemoveColumn: (columnId: string) => void;
-  onCellChange: (rowKey: string, columnId: string, value: string) => void;
+  onCellChange: (rowKey: string, columnId: string, value: CellValue) => void;
   onDeleteCell: (rowKey: string, slotId: string) => void;
   onRowOrdersChange: (orders: Record<string, string[]>) => void;
   onCellsChange: (cells: PlannerCellMap) => void;
+  onCellTypesChange: (updater: (current: Record<string, CellType>) => Record<string, CellType>) => void;
+  onCommutesChange: (updater: (current: PlannerCommuteMap) => PlannerCommuteMap) => void;
 }) {
   const dateRows = useMemo<DateRow[]>(() => buildDateRows(startDate, endDate), [startDate, endDate]);
   const totalActivitiesCount = useMemo(() => {
     return Object.values(rowOrders).reduce((sum, order) => sum + order.length, 0);
   }, [rowOrders]);
   const [overviewExpanded, setOverviewExpanded] = useState(false);
-  const [pickerRowKey, setPickerRowKey] = useState<string | null>(null);
+  const [pickerTarget, setPickerTarget] = useState<{ rowKey: string; insertIndex?: number } | null>(null);
+  const [activeCommuteSegment, setActiveCommuteSegment] = useState<{
+    rowKey: string;
+    fromSlotId: string;
+    toSlotId: string;
+    fromValue: CellValue;
+    toValue: CellValue;
+    preference?: CommuteSegmentData;
+  } | null>(null);
   const [editingCell, setEditingCell] = useState<{
     rowKey: string;
     columnId: string;
-    value: string;
+    value: CellValue;
     type: CellType;
+    isNew?: boolean;
   } | null>(null);
-  const [cellToDelete, setCellToDelete] = useState<{ rowKey: string; slotId: string; value: string } | null>(null);
+  const [cellToDelete, setCellToDelete] = useState<{ rowKey: string; slotId: string; value: CellValue } | null>(null);
   const [activeDrag, setActiveDrag] = useState<{
     id: string;
     slotId: string;
-    value: string;
+    value: CellValue;
     type: CellType;
   } | null>(null);
 
@@ -522,32 +596,40 @@ function PlannerPage({
   );
 
   const closeEditor = () => {
+    if (editingCell?.isNew && !getCellText(editingCell.value).trim()) {
+      onDeleteCell(editingCell.rowKey, editingCell.columnId);
+    }
     setEditingCell(null);
   };
 
   const handleSelectCellType = (type: CellType) => {
-    if (!pickerRowKey) {
+    if (!pickerTarget) {
       return;
     }
 
-    const targetRowKey = pickerRowKey;
-    const newSlotId = onAddCell(targetRowKey, type);
-    setPickerRowKey(null);
+    const { rowKey, insertIndex } = pickerTarget;
+    const newSlotId = onAddCell(rowKey, type, insertIndex);
+    setPickerTarget(null);
+
     setEditingCell({
-      rowKey: targetRowKey,
+      rowKey,
       columnId: newSlotId,
       value: '',
-      type
+      type,
+      isNew: true
     });
   };
 
-  const saveEditorValue = () => {
+  const saveEditorValue = (updatedValue?: CellValue) => {
     if (!editingCell) {
       return;
     }
 
-    onCellChange(editingCell.rowKey, editingCell.columnId, editingCell.value);
-    closeEditor();
+    const valueToSave = updatedValue !== undefined ? updatedValue : editingCell.value;
+    const { rowKey, columnId } = editingCell;
+
+    onCellChange(rowKey, columnId, valueToSave);
+    setEditingCell(null);
   };
 
   const handleConfirmDelete = () => {
@@ -810,35 +892,71 @@ function PlannerPage({
                         strategy={horizontalListSortingStrategy}
                       >
                         <div className="planner-row-cells">
-                          {order.map((slotId) => {
+                          {order.map((slotId, index) => {
                             const cellType = resolveCellType(slotId, cellTypes);
+                            const prevSlotId = index > 0 ? order[index - 1] : null;
+                            const segmentKey = prevSlotId ? `${row.key}:${prevSlotId}->${slotId}` : '';
 
                             return (
-                              <DraggableEditableCell
-                                key={slotId}
-                                slotId={slotId}
-                                value={cells[row.key]?.[slotId] ?? ''}
-                                type={cellType}
-                                onOpenEdit={() =>
-                                  setEditingCell({
-                                    rowKey: row.key,
-                                    columnId: slotId,
-                                    value: cells[row.key]?.[slotId] ?? '',
-                                    type: cellType
-                                  })
-                                }
-                                onDelete={() =>
-                                  setCellToDelete({
-                                    rowKey: row.key,
-                                    slotId,
-                                    value: cells[row.key]?.[slotId] ?? ''
-                                  })
-                                }
-                              />
+                              <Fragment key={slotId}>
+                                {index === 0 ? (
+                                  <InsertCellDivider
+                                    onClick={() =>
+                                      setPickerTarget({ rowKey: row.key, insertIndex: 0 })
+                                    }
+                                  />
+                                ) : null}
+
+                                {index > 0 && prevSlotId ? (
+                                  <CommuteBridge
+                                    rowKey={row.key}
+                                    fromSlotId={prevSlotId}
+                                    toSlotId={slotId}
+                                    fromValue={cells[row.key]?.[prevSlotId]}
+                                    toValue={cells[row.key]?.[slotId]}
+                                    preference={commutes?.[segmentKey]}
+                                    onOpenCommute={() =>
+                                      setActiveCommuteSegment({
+                                        rowKey: row.key,
+                                        fromSlotId: prevSlotId,
+                                        toSlotId: slotId,
+                                        fromValue: cells[row.key]?.[prevSlotId] ?? '',
+                                        toValue: cells[row.key]?.[slotId] ?? '',
+                                        preference: commutes?.[segmentKey]
+                                      })
+                                    }
+                                    onInsert={() =>
+                                      setPickerTarget({ rowKey: row.key, insertIndex: index })
+                                    }
+                                  />
+                                ) : null}
+
+                                <DraggableEditableCell
+                                  slotId={slotId}
+                                  value={cells[row.key]?.[slotId] ?? ''}
+                                  type={cellType}
+                                  onOpenEdit={() => {
+                                    setEditingCell({
+                                      rowKey: row.key,
+                                      columnId: slotId,
+                                      value: cells[row.key]?.[slotId] ?? '',
+                                      type: cellType,
+                                      isNew: false
+                                    });
+                                  }}
+                                  onDelete={() =>
+                                    setCellToDelete({
+                                      rowKey: row.key,
+                                      slotId,
+                                      value: cells[row.key]?.[slotId] ?? ''
+                                    })
+                                  }
+                                />
+                              </Fragment>
                             );
                           })}
 
-                          <AddCellButton onClick={() => setPickerRowKey(row.key)} />
+                          <AddCellButton onClick={() => setPickerTarget({ rowKey: row.key })} />
                         </div>
                       </SortableContext>
                     </DroppablePlannerRow>
@@ -868,10 +986,73 @@ function PlannerPage({
         </div>
       </section>
 
+      {/* Commute Modal */}
+      {activeCommuteSegment ? (
+        <div
+          className="cell-modal-backdrop"
+          role="presentation"
+          onClick={() => setActiveCommuteSegment(null)}
+        >
+          <section
+            className="cell-modal cell-modal--commute"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Edit Commute"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="cell-modal-header">
+              <div>
+                <span className="eyebrow">COMMUTE</span>
+                <h3>Travel between stops</h3>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                onClick={() => setActiveCommuteSegment(null)}
+                aria-label="Close modal"
+              >
+                ×
+              </button>
+            </div>
+
+            <CommuteModalContent
+              origin={activeCommuteSegment.fromValue}
+              destination={activeCommuteSegment.toValue}
+              initialValue={{
+                text:
+                  activeCommuteSegment.preference?.customText ||
+                  activeCommuteSegment.preference?.durationText ||
+                  '',
+                commuteMode: activeCommuteSegment.preference?.mode || 'DRIVING',
+                commuteDistance: activeCommuteSegment.preference?.distanceText,
+                originName: getCellText(activeCommuteSegment.fromValue),
+                destinationName: getCellText(activeCommuteSegment.toValue)
+              }}
+              onSave={(updatedVal) => {
+                const norm = normalizeCellValue(updatedVal);
+                const segmentKey = `${activeCommuteSegment.rowKey}:${activeCommuteSegment.fromSlotId}->${activeCommuteSegment.toSlotId}`;
+                onCommutesChange((prev) => ({
+                  ...prev,
+                  [segmentKey]: {
+                    mode: norm.commuteMode || 'DRIVING',
+                    customText: norm.text,
+                    durationText: norm.text,
+                    distanceText: norm.commuteDistance
+                  }
+                }));
+                setActiveCommuteSegment(null);
+              }}
+              onCancel={() => setActiveCommuteSegment(null)}
+            />
+          </section>
+        </div>
+      ) : null}
+
+      {/* Place / Point Edit Modal */}
       {editingCell ? (
         <div className="cell-modal-backdrop" role="presentation" onClick={closeEditor}>
           <section
-            className="cell-modal"
+            className="cell-modal cell-modal--place-search"
             role="dialog"
             aria-modal="true"
             aria-label="Edit cell"
@@ -880,18 +1061,14 @@ function PlannerPage({
             <div className="cell-modal-header">
               <div>
                 <span className={`eyebrow eyebrow--${editingCell.type}`}>
-                  {editingCell.type === 'travelling'
-                    ? 'Travelling • Commute'
-                    : editingCell.type === 'place'
-                    ? 'Place'
-                    : 'Point'}
+                  {editingCell.type === 'place'
+                    ? 'Place • Destination'
+                    : 'Point • Landmark'}
                 </span>
                 <h3>
-                  {editingCell.type === 'travelling'
-                    ? 'Set commute time'
-                    : editingCell.type === 'place'
-                    ? 'Update place note'
-                    : 'Update point note'}
+                  {editingCell.type === 'place'
+                    ? 'Search place or address'
+                    : 'Search point or landmark'}
                 </h3>
               </div>
               <button className="icon-button" type="button" onClick={closeEditor} aria-label="Close editor">
@@ -899,48 +1076,26 @@ function PlannerPage({
               </button>
             </div>
 
-            <input
-              className={`cell-modal-input cell-modal-input--${editingCell.type}`}
-              autoFocus
-              value={editingCell.value}
-              onChange={(event) => setEditingCell((current) => (current ? { ...current, value: event.target.value } : current))}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  saveEditorValue();
-                }
-
-                if (event.key === 'Escape') {
-                  event.preventDefault();
-                  closeEditor();
-                }
+            <PlaceSearchModalContent
+              cellType={editingCell.type}
+              initialData={normalizeCellValue(editingCell.value)}
+              onChange={(newData) => {
+                setEditingCell((current) =>
+                  current ? { ...current, value: newData } : current
+                );
               }}
-              placeholder={
-                editingCell.type === 'travelling'
-                  ? 'add commute time'
-                  : editingCell.type === 'place'
-                  ? 'Add place name or details'
-                  : 'Add point note'
-              }
+              onSave={() => saveEditorValue()}
+              onCancel={closeEditor}
             />
-
-            <div className="cell-modal-actions">
-              <button className="primary-button" type="button" onClick={saveEditorValue}>
-                Save
-              </button>
-              <button className="secondary-button" type="button" onClick={closeEditor}>
-                Cancel
-              </button>
-            </div>
           </section>
         </div>
       ) : null}
 
-      {pickerRowKey ? (
+      {pickerTarget ? (
         <div
           className="cell-modal-backdrop"
           role="presentation"
-          onClick={() => setPickerRowKey(null)}
+          onClick={() => setPickerTarget(null)}
         >
           <section
             className="cell-modal cell-type-picker-modal"
@@ -951,19 +1106,21 @@ function PlannerPage({
             onKeyDown={(event) => {
               if (event.key === 'Escape') {
                 event.preventDefault();
-                setPickerRowKey(null);
+                setPickerTarget(null);
               }
             }}
           >
             <div className="cell-modal-header">
               <div>
-                <span className="eyebrow">Add new activity</span>
+                <span className="eyebrow">
+                  {pickerTarget.insertIndex !== undefined ? 'Insert activity' : 'Add new activity'}
+                </span>
                 <h3>Choose cell type</h3>
               </div>
               <button
                 className="icon-button"
                 type="button"
-                onClick={() => setPickerRowKey(null)}
+                onClick={() => setPickerTarget(null)}
                 aria-label="Close modal"
               >
                 ×
@@ -971,26 +1128,6 @@ function PlannerPage({
             </div>
 
             <div className="cell-type-options">
-              <button
-                type="button"
-                className="cell-type-option cell-type-option--travelling"
-                onClick={() => handleSelectCellType('travelling')}
-              >
-                <div className="cell-type-icon cell-type-icon--travelling" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 10.9 2 11.2 2 11.5V16c0 .6.4 1 1 1h2" />
-                    <circle cx="7" cy="17" r="2" />
-                    <path d="M9 17h6" />
-                    <circle cx="17" cy="17" r="2" />
-                  </svg>
-                </div>
-                <div className="cell-type-info">
-                  <strong className="cell-type-title">Travelling</strong>
-                  <span className="cell-type-desc">Has car icon & commute time</span>
-                </div>
-                <span className="cell-type-badge cell-type-badge--travelling">🚗 Commute</span>
-              </button>
-
               <button
                 type="button"
                 className="cell-type-option cell-type-option--point"
@@ -1032,7 +1169,7 @@ function PlannerPage({
               <button
                 className="secondary-button"
                 type="button"
-                onClick={() => setPickerRowKey(null)}
+                onClick={() => setPickerTarget(null)}
               >
                 Cancel
               </button>
@@ -1076,9 +1213,9 @@ function PlannerPage({
             </div>
 
             <p className="cell-delete-message">
-              Are you sure you want to remove {cellToDelete.value ? (
+              Are you sure you want to remove {getCellText(cellToDelete.value) ? (
                 <>
-                  note <strong>&ldquo;{cellToDelete.value}&rdquo;</strong>
+                  note <strong>&ldquo;{getCellText(cellToDelete.value)}&rdquo;</strong>
                 </>
               ) : (
                 'this empty note'
@@ -1126,6 +1263,7 @@ function App() {
   const [cells, setCells] = useState<PlannerCellMap>({});
   const [rowOrders, setRowOrders] = useState<Record<string, string[]>>({});
   const [cellTypes, setCellTypes] = useState<Record<string, CellType>>({});
+  const [commutes, setCommutes] = useState<PlannerCommuteMap>({});
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const dateRows = useMemo(() => buildDateRows(startDate, endDate), [startDate, endDate]);
 
@@ -1146,6 +1284,9 @@ function App() {
       const normalized = normalizePlannerState(saved);
       setCells(normalized.cells);
       setCellTypes(normalized.cellTypes);
+      if (saved.commutes) {
+        setCommutes(saved.commutes);
+      }
       setRowOrders(
         buildRowOrders(
           buildDateRows(saved.startDate, saved.endDate).map((row) => row.key),
@@ -1156,6 +1297,12 @@ function App() {
     }
 
     setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (isGoogleMapsConfigured()) {
+      loadGooglePlacesScript();
+    }
   }, []);
 
   useEffect(() => {
@@ -1188,7 +1335,8 @@ function App() {
         columns,
         cells,
         rowOrders,
-        cellTypes
+        cellTypes,
+        commutes
       };
 
       savePlannerState(state);
@@ -1196,21 +1344,21 @@ function App() {
     }, 120);
 
     return () => window.clearTimeout(timeout);
-  }, [cellTypes, columns, cells, destination, endDate, hydrated, rowOrders, startDate, tripName]);
+  }, [cellTypes, columns, cells, commutes, destination, endDate, hydrated, rowOrders, startDate, tripName]);
 
   const changeStartDate = (value: string) => {
-    const normalized = normalizeDateRange(value, endDate);
-    setStartDate(normalized.startDate);
-    setEndDate(normalized.endDate);
+    const adjusted = adjustStartDate(value, endDate);
+    setStartDate(adjusted.startDate);
+    setEndDate(adjusted.endDate);
   };
 
   const changeEndDate = (value: string) => {
-    const normalized = normalizeDateRange(startDate, value);
-    setStartDate(normalized.startDate);
-    setEndDate(normalized.endDate);
+    const adjusted = adjustEndDate(value, startDate);
+    setStartDate(adjusted.startDate);
+    setEndDate(adjusted.endDate);
   };
 
-  const updateCell = (rowKey: string, columnId: string, value: string) => {
+  const updateCell = (rowKey: string, columnId: string, value: CellValue) => {
     setCells((current) => ({
       ...current,
       [rowKey]: {
@@ -1224,13 +1372,23 @@ function App() {
     setColumns((current) => [...current, makeColumnFromTemplate(current.length)]);
   };
 
-  const addCell = (rowKey: string, type: CellType): string => {
+  const addCell = (rowKey: string, type: CellType, insertIndex?: number): string => {
     const newSlotId = `${type}-${rowKey}-${Date.now()}`;
 
-    setRowOrders((current) => ({
-      ...current,
-      [rowKey]: [...(current[rowKey] ?? getDefaultRowOrder(rowKey)), newSlotId]
-    }));
+    setRowOrders((current) => {
+      const existing = current[rowKey] ?? getDefaultRowOrder(rowKey);
+      let updated: string[];
+      if (insertIndex !== undefined && insertIndex >= 0 && insertIndex <= existing.length) {
+        updated = [...existing];
+        updated.splice(insertIndex, 0, newSlotId);
+      } else {
+        updated = [...existing, newSlotId];
+      }
+      return {
+        ...current,
+        [rowKey]: updated
+      };
+    });
 
     setCellTypes((current) => ({
       ...current,
@@ -1287,6 +1445,7 @@ function App() {
     setCells(fresh.cells);
     setRowOrders(fresh.rowOrders);
     setCellTypes({});
+    setCommutes({});
     clearPlannerState();
     setLastSavedAt(null);
     window.location.hash = '#setup';
@@ -1329,6 +1488,7 @@ function App() {
       rowOrders={rowOrders}
       cells={cells}
       cellTypes={cellTypes}
+      commutes={commutes}
       lastSavedAt={lastSavedAt}
       onBack={goBackToSetup}
       onTripReset={resetPlanner}
@@ -1343,6 +1503,8 @@ function App() {
       onDeleteCell={deleteCell}
       onRowOrdersChange={setRowOrders}
       onCellsChange={setCells}
+      onCellTypesChange={setCellTypes}
+      onCommutesChange={setCommutes}
     />
   );
 }

@@ -1,4 +1,4 @@
-import { addDays, eachDayOfInterval, format, isAfter, parseISO } from 'date-fns';
+import { addDays, eachDayOfInterval, format, isAfter, isValid, parseISO } from 'date-fns';
 import { DateRow } from '../types';
 
 export function todayInputValue() {
@@ -19,6 +19,36 @@ export function normalizeDateRange(startDate: string, endDate: string) {
   }
 
   return { startDate, endDate };
+}
+
+export function adjustStartDate(newStartDate: string, currentEndDate: string) {
+  if (!newStartDate || !currentEndDate) {
+    return { startDate: newStartDate, endDate: currentEndDate };
+  }
+
+  const start = parseISO(newStartDate);
+  const end = parseISO(currentEndDate);
+
+  if (isValid(start) && isValid(end) && isAfter(start, end)) {
+    return { startDate: newStartDate, endDate: newStartDate };
+  }
+
+  return { startDate: newStartDate, endDate: currentEndDate };
+}
+
+export function adjustEndDate(newEndDate: string, currentStartDate: string) {
+  if (!newEndDate || !currentStartDate) {
+    return { startDate: currentStartDate, endDate: newEndDate };
+  }
+
+  const start = parseISO(currentStartDate);
+  const end = parseISO(newEndDate);
+
+  if (isValid(start) && isValid(end) && isAfter(start, end)) {
+    return { startDate: newEndDate, endDate: newEndDate };
+  }
+
+  return { startDate: currentStartDate, endDate: newEndDate };
 }
 
 export function buildDateRows(startDate: string, endDate: string): DateRow[] {
