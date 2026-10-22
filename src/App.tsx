@@ -25,6 +25,7 @@ import {
   CellValue,
   CommuteMode,
   DateRow,
+  DestinationData,
   getCellAddress,
   getCellLocation,
   getCellPhoto,
@@ -40,8 +41,15 @@ import {
 import { PlaceSearchModalContent } from './components/PlaceSearchModalContent';
 import { CommuteModalContent } from './components/CommuteModalContent';
 import { CommuteBridge } from './components/CommuteBridge';
-import { calculateCommute, getCommuteModeEmoji } from './utils/commute';
-import { isGoogleMapsConfigured, loadGooglePlacesScript } from './utils/googlePlaces';
+import { DayCommuteCell } from './components/DayCommuteCell';
+import { DestinationAutocomplete } from './components/DestinationAutocomplete';
+import {
+  calculateCommute,
+  findFirstContentCell,
+  findLastContentCell,
+  getCommuteModeEmoji
+} from './utils/commute';
+import { geocodeDestination, isGoogleMapsConfigured, loadGooglePlacesScript } from './utils/googlePlaces';
 
 type PageMode = 'setup' | 'planner';
 
@@ -156,8 +164,16 @@ function createFreshState(): PlannerState {
 
   return {
     version: 1,
-    tripName: 'Coastal Escape',
+    tripName: 'Bali, Indonesia',
     destination: 'Bali, Indonesia',
+    destinationData: {
+      name: 'Bali, Indonesia',
+      formattedAddress: 'Bali, Indonesia',
+      location: { lat: -8.409518, lng: 115.188916 },
+      viewport: { north: -8.0, south: -8.9, east: 115.8, west: 114.4 },
+      photoUrl: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=800&q=80',
+      placeId: 'demo-dest-bali'
+    },
     startDate,
     endDate,
     columns: defaultColumns,
@@ -420,16 +436,20 @@ function DroppablePlannerRow({
 }
 
 function SetupPage({
-  tripName,
-  setTripName,
+  destination,
+  setDestination,
+  destinationData,
+  setDestinationData,
   startDate,
   setStartDate,
   endDate,
   setEndDate,
   onContinue
 }: {
-  tripName: string;
-  setTripName: (value: string) => void;
+  destination: string;
+  setDestination: (value: string) => void;
+  destinationData?: DestinationData;
+  setDestinationData: (data?: DestinationData) => void;
   startDate: string;
   setStartDate: (value: string) => void;
   endDate: string;
@@ -446,14 +466,14 @@ function SetupPage({
           <span className="eyebrow">Itinerary Studio</span>
           <h1>Plan a brighter trip, one day at a time.</h1>
           <p className="hero-copy">
-            Start with a trip name and your travel dates. We’ll build a clean, colorful planning table on the next
+            Start with your destination and travel dates. We’ll build a clean, colorful planning table on the next
             screen.
           </p>
 
           <div className="setup-highlights">
             <div className="stat-card">
               <strong>2 steps</strong>
-              <span>setup, then planning</span>
+              <span>destination, then planning</span>
             </div>
             <div className="stat-card">
               <strong>Sticky</strong>
@@ -470,18 +490,27 @@ function SetupPage({
           className="setup-form"
           onSubmit={(event) => {
             event.preventDefault();
-            onContinue();
+            if (destination.trim()) {
+              onContinue();
+            }
           }}
         >
-          <label>
-            Trip name
-            <input
-              value={tripName}
-              onChange={(event) => setTripName(event.target.value)}
-              placeholder="Coastal Escape"
-              autoComplete="off"
+          <div className="setup-field-group">
+            <label className="setup-field-label">
+              <span>Destination</span>
+            </label>
+            <DestinationAutocomplete
+              value={destination}
+              destinationData={destinationData}
+              onChange={(newDest, newData) => {
+                setDestination(newDest);
+                if (newData !== undefined) {
+                  setDestinationData(newData);
+                }
+              }}
             />
-          </label>
+          </div>
+
           <label>
             From
             <input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
@@ -496,7 +525,11 @@ function SetupPage({
             />
           </label>
 
-          <button className="primary-button setup-continue-button" type="submit">
+          <button
+            className="primary-button setup-continue-button"
+            type="submit"
+            disabled={!destination.trim()}
+          >
             Continue to planner
           </button>
         </form>
@@ -507,6 +540,8 @@ function SetupPage({
 
 function PlannerPage({
   tripName,
+  destination,
+  destinationData,
   startDate,
   endDate,
   columns,
@@ -532,6 +567,8 @@ function PlannerPage({
   onCommutesChange
 }: {
   tripName: string;
+  destination: string;
+  destinationData?: DestinationData;
   startDate: string;
   endDate: string;
   columns: PlannerColumn[];
@@ -569,6 +606,7 @@ function PlannerPage({
     fromValue: CellValue;
     toValue: CellValue;
     preference?: CommuteSegmentData;
+    isDayCommute?: boolean;
   } | null>(null);
   const [editingCell, setEditingCell] = useState<{
     rowKey: string;
@@ -813,8 +851,10 @@ function PlannerPage({
 
       <section className={`planner-top-card hero-card ${overviewExpanded ? 'planner-top-card--expanded' : 'planner-top-card--compact'}`}>
         <div className="planner-top-summary">
-          <span className="eyebrow">Trip overview</span>
-          <h1>{tripName || 'Untitled trip'}</h1>
+          <span className="eyebrow">
+            {destination ? `Trip overview • 📍 ${destination}` : 'Trip overview'}
+          </span>
+          <h1>{destination || tripName || 'Untitled trip'}</h1>
           <p className="hero-copy">
             {startDate && endDate
               ? `Planning from ${startDate} to ${endDate}`
@@ -877,8 +917,30 @@ function PlannerPage({
           >
             <div className="planner-list">
               {dateRows.length > 0 ? (
-                dateRows.map((row) => {
+                dateRows.map((row, rowIndex) => {
                   const order = rowOrders[row.key] ?? [];
+
+                  // For days after Day 1: compute commute from last cell of previous day to first cell of current day
+                  const prevRow = rowIndex > 0 ? dateRows[rowIndex - 1] : null;
+                  let prevLastCell = prevRow
+                    ? findLastContentCell(rowOrders[prevRow.key], cells[prevRow.key])
+                    : null;
+                  let effectivePrevRow = prevRow;
+
+                  if (rowIndex > 0 && (!prevLastCell || !getCellText(prevLastCell.value).trim())) {
+                    for (let i = rowIndex - 2; i >= 0; i--) {
+                      const earlierRow = dateRows[i];
+                      const earlierCell = findLastContentCell(rowOrders[earlierRow.key], cells[earlierRow.key]);
+                      if (earlierCell && getCellText(earlierCell.value).trim()) {
+                        prevLastCell = earlierCell;
+                        effectivePrevRow = earlierRow;
+                        break;
+                      }
+                    }
+                  }
+
+                  const currFirstCell = findFirstContentCell(order, cells[row.key]);
+                  const dayCommuteKey = `dayCommute:${row.key}`;
 
                   return (
                     <DroppablePlannerRow key={row.key} rowKey={row.key}>
@@ -892,6 +954,28 @@ function PlannerPage({
                         strategy={horizontalListSortingStrategy}
                       >
                         <div className="planner-row-cells">
+                          {rowIndex > 0 && prevRow ? (
+                            <DayCommuteCell
+                              rowKey={row.key}
+                              dayLabel={row.label}
+                              prevDayLabel={effectivePrevRow?.label || prevRow.label}
+                              fromValue={prevLastCell?.value}
+                              toValue={currFirstCell?.value}
+                              preference={commutes?.[dayCommuteKey]}
+                              onOpenCommute={() =>
+                                setActiveCommuteSegment({
+                                  rowKey: row.key,
+                                  fromSlotId: prevLastCell?.slotId || 'prev-day-last',
+                                  toSlotId: currFirstCell?.slotId || 'curr-day-first',
+                                  fromValue: prevLastCell?.value ?? '',
+                                  toValue: currFirstCell?.value ?? '',
+                                  preference: commutes?.[dayCommuteKey],
+                                  isDayCommute: true
+                                })
+                              }
+                            />
+                          ) : null}
+
                           {order.map((slotId, index) => {
                             const cellType = resolveCellType(slotId, cellTypes);
                             const prevSlotId = index > 0 ? order[index - 1] : null;
@@ -1003,7 +1087,11 @@ function PlannerPage({
             <div className="cell-modal-header">
               <div>
                 <span className="eyebrow">COMMUTE</span>
-                <h3>Travel between stops</h3>
+                <h3>
+                  {activeCommuteSegment.isDayCommute
+                    ? 'Commute from previous day'
+                    : 'Travel between stops'}
+                </h3>
               </div>
               <button
                 className="icon-button"
@@ -1025,12 +1113,18 @@ function PlannerPage({
                   '',
                 commuteMode: activeCommuteSegment.preference?.mode || 'DRIVING',
                 commuteDistance: activeCommuteSegment.preference?.distanceText,
-                originName: getCellText(activeCommuteSegment.fromValue),
-                destinationName: getCellText(activeCommuteSegment.toValue)
+                originName:
+                  getCellText(activeCommuteSegment.fromValue) ||
+                  (activeCommuteSegment.isDayCommute ? 'Previous day stop' : ''),
+                destinationName:
+                  getCellText(activeCommuteSegment.toValue) ||
+                  (activeCommuteSegment.isDayCommute ? 'First stop of day' : '')
               }}
               onSave={(updatedVal) => {
                 const norm = normalizeCellValue(updatedVal);
-                const segmentKey = `${activeCommuteSegment.rowKey}:${activeCommuteSegment.fromSlotId}->${activeCommuteSegment.toSlotId}`;
+                const segmentKey = activeCommuteSegment.isDayCommute
+                  ? `dayCommute:${activeCommuteSegment.rowKey}`
+                  : `${activeCommuteSegment.rowKey}:${activeCommuteSegment.fromSlotId}->${activeCommuteSegment.toSlotId}`;
                 onCommutesChange((prev) => ({
                   ...prev,
                   [segmentKey]: {
@@ -1086,6 +1180,8 @@ function PlannerPage({
               }}
               onSave={() => saveEditorValue()}
               onCancel={closeEditor}
+              destination={destination}
+              destinationData={destinationData}
             />
           </section>
         </div>
@@ -1255,8 +1351,16 @@ function App() {
 
     return loadPlannerState() ? 'planner' : 'setup';
   });
-  const [tripName, setTripName] = useState('Coastal Escape');
+  const [tripName, setTripName] = useState('Bali, Indonesia');
   const [destination, setDestination] = useState('Bali, Indonesia');
+  const [destinationData, setDestinationData] = useState<DestinationData | undefined>({
+    name: 'Bali, Indonesia',
+    formattedAddress: 'Bali, Indonesia',
+    location: { lat: -8.409518, lng: 115.188916 },
+    viewport: { north: -8.0, south: -8.9, east: 115.8, west: 114.4 },
+    photoUrl: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=800&q=80',
+    placeId: 'demo-dest-bali'
+  });
   const [startDate, setStartDate] = useState(todayInputValue());
   const [endDate, setEndDate] = useState(addDaysInputValue(todayInputValue(), 4));
   const [columns, setColumns] = useState<PlannerColumn[]>(defaultColumns);
@@ -1275,8 +1379,15 @@ function App() {
     const saved = loadPlannerState();
 
     if (saved) {
-      setTripName(saved.tripName);
-      setDestination(saved.destination);
+      setTripName(saved.tripName || saved.destination || '');
+      setDestination(saved.destination || saved.tripName || '');
+      if (saved.destinationData) {
+        setDestinationData(saved.destinationData);
+      } else if (saved.destination) {
+        geocodeDestination(saved.destination).then((geo) => {
+          if (geo) setDestinationData(geo);
+        });
+      }
       setStartDate(saved.startDate);
       setEndDate(saved.endDate);
       setColumns(saved.columns.length ? saved.columns : defaultColumns);
@@ -1328,8 +1439,9 @@ function App() {
     const timeout = window.setTimeout(() => {
       const state: PlannerState = {
         version: 1,
-        tripName,
+        tripName: tripName || destination,
         destination,
+        destinationData,
         startDate,
         endDate,
         columns,
@@ -1344,7 +1456,7 @@ function App() {
     }, 120);
 
     return () => window.clearTimeout(timeout);
-  }, [cellTypes, columns, cells, commutes, destination, endDate, hydrated, rowOrders, startDate, tripName]);
+  }, [cellTypes, columns, cells, commutes, destination, destinationData, endDate, hydrated, rowOrders, startDate, tripName]);
 
   const changeStartDate = (value: string) => {
     const adjusted = adjustStartDate(value, endDate);
@@ -1439,6 +1551,7 @@ function App() {
     const fresh = createFreshState();
     setTripName(fresh.tripName);
     setDestination(fresh.destination);
+    setDestinationData(fresh.destinationData);
     setStartDate(fresh.startDate);
     setEndDate(fresh.endDate);
     setColumns(fresh.columns);
@@ -1453,6 +1566,12 @@ function App() {
   };
 
   const continueToPlanner = () => {
+    if (!destination.trim()) {
+      return;
+    }
+    if (!tripName.trim()) {
+      setTripName(destination);
+    }
     const normalized = normalizeDateRange(startDate, endDate);
     setStartDate(normalized.startDate);
     setEndDate(normalized.endDate);
@@ -1468,8 +1587,13 @@ function App() {
   if (page === 'setup') {
     return (
       <SetupPage
-        tripName={tripName}
-        setTripName={setTripName}
+        destination={destination}
+        setDestination={(dest) => {
+          setDestination(dest);
+          setTripName(dest);
+        }}
+        destinationData={destinationData}
+        setDestinationData={setDestinationData}
         startDate={startDate}
         setStartDate={changeStartDate}
         endDate={endDate}
@@ -1481,7 +1605,9 @@ function App() {
 
   return (
     <PlannerPage
-      tripName={tripName}
+      tripName={tripName || destination}
+      destination={destination}
+      destinationData={destinationData}
       startDate={startDate}
       endDate={endDate}
       columns={columns}

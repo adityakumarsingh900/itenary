@@ -170,3 +170,69 @@ export async function calculateCommute(
 
   return null;
 }
+
+// Global in-memory cache to prevent duplicate Google Maps queries for identical routes
+export const commuteCache = new Map<string, CommuteEstimate>();
+
+export function getRouteCacheKey(
+  fromVal?: CellValue,
+  toVal?: CellValue,
+  mode: CommuteMode = 'DRIVING'
+): string | null {
+  if (!fromVal || !toVal) return null;
+
+  const fromLoc = getCellLocation(fromVal);
+  const toLoc = getCellLocation(toVal);
+  const fromText = fromLoc
+    ? `${fromLoc.lat.toFixed(5)},${fromLoc.lng.toFixed(5)}`
+    : getCellAddress(fromVal) || getCellText(fromVal);
+  const toText = toLoc
+    ? `${toLoc.lat.toFixed(5)},${toLoc.lng.toFixed(5)}`
+    : getCellAddress(toVal) || getCellText(toVal);
+
+  if (!fromText || !toText) return null;
+  return `${fromText}->${toText}:${mode}`;
+}
+
+/**
+ * Finds the last cell with content in a date row, or falls back to the last slot.
+ */
+export function findLastContentCell(
+  order: string[] = [],
+  rowCells: Record<string, CellValue> = {}
+): { slotId: string; value: CellValue } | null {
+  for (let i = order.length - 1; i >= 0; i--) {
+    const slotId = order[i];
+    const val = rowCells[slotId];
+    if (val && getCellText(val).trim()) {
+      return { slotId, value: val };
+    }
+  }
+  if (order.length > 0) {
+    const lastId = order[order.length - 1];
+    return { slotId: lastId, value: rowCells[lastId] ?? '' };
+  }
+  return null;
+}
+
+/**
+ * Finds the first cell with content in a date row, or falls back to the first slot.
+ */
+export function findFirstContentCell(
+  order: string[] = [],
+  rowCells: Record<string, CellValue> = {}
+): { slotId: string; value: CellValue } | null {
+  for (let i = 0; i < order.length; i++) {
+    const slotId = order[i];
+    const val = rowCells[slotId];
+    if (val && getCellText(val).trim()) {
+      return { slotId, value: val };
+    }
+  }
+  if (order.length > 0) {
+    const firstId = order[0];
+    return { slotId: firstId, value: rowCells[firstId] ?? '' };
+  }
+  return null;
+}
+

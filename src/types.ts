@@ -37,12 +37,27 @@ export type CommuteSegmentData = {
   note?: string;
 };
 
+export type DestinationData = {
+  name: string;
+  formattedAddress?: string;
+  placeId?: string;
+  location?: { lat: number; lng: number };
+  viewport?: {
+    north: number;
+    south: number;
+    east: number;
+    west: number;
+  };
+  photoUrl?: string;
+};
+
 export type PlannerCommuteMap = Record<string, CommuteSegmentData>;
 
 export type PlannerState = {
   version: 1;
   tripName: string;
   destination: string;
+  destinationData?: DestinationData;
   startDate: string;
   endDate: string;
   columns: PlannerColumn[];

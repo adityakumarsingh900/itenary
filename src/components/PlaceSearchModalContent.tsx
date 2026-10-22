@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { CellData, CellType } from '../types';
+import { CellData, CellType, DestinationData } from '../types';
 import {
   extractGooglePlaceData,
+  geocodeDestination,
   isGoogleMapsConfigured,
   isGoogleMapsLoaded,
   loadGooglePlacesScript,
@@ -15,6 +16,8 @@ interface PlaceSearchModalContentProps {
   onChange: (data: CellData) => void;
   onSave: () => void;
   onCancel: () => void;
+  destination?: string;
+  destinationData?: DestinationData;
 }
 
 export function PlaceSearchModalContent({
@@ -22,11 +25,14 @@ export function PlaceSearchModalContent({
   initialData,
   onChange,
   onSave,
-  onCancel
+  onCancel,
+  destination,
+  destinationData
 }: PlaceSearchModalContentProps) {
   const [googleConfigured] = useState(() => isGoogleMapsConfigured());
   const [googleReady, setGoogleReady] = useState(() => isGoogleMapsLoaded());
   const [googleLoading, setGoogleLoading] = useState(() => isGoogleMapsConfigured() && !isGoogleMapsLoaded());
+  const [resolvedDestData, setResolvedDestData] = useState<DestinationData | undefined>(destinationData);
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState<PlaceSearchResult[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -35,6 +41,27 @@ export function PlaceSearchModalContent({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const googleContainerRef = useRef<HTMLDivElement>(null);
+  const autocompleteElementRef = useRef<any>(null);
+
+  // If destination is provided but destinationData lacks coordinates, resolve them via geocoding
+  useEffect(() => {
+    if (destinationData?.location) {
+      setResolvedDestData(destinationData);
+      return;
+    }
+
+    if (destination && destination.trim()) {
+      let isMounted = true;
+      geocodeDestination(destination).then((geo) => {
+        if (isMounted && geo) {
+          setResolvedDestData(geo);
+        }
+      });
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [destination, destinationData]);
 
   // Initialize Google Maps script if configured and not yet ready
   useEffect(() => {
@@ -57,7 +84,7 @@ export function PlaceSearchModalContent({
     };
   }, [googleConfigured, googleReady]);
 
-  // Setup modern PlaceAutocompleteElement from Places API (New)
+  // Setup modern PlaceAutocompleteElement from Places API (New) with destination locationBias
   useEffect(() => {
     if (!googleReady || !window.google?.maps || !googleContainerRef.current) {
       return;
@@ -74,7 +101,34 @@ export function PlaceSearchModalContent({
 
         const { PlaceAutocompleteElement } = placesLib;
         if (PlaceAutocompleteElement) {
-          const element = new PlaceAutocompleteElement();
+          const currentDest = destinationData || resolvedDestData;
+          let locationBias: any = undefined;
+          if (currentDest?.viewport) {
+            locationBias = currentDest.viewport;
+          } else if (currentDest?.location) {
+            locationBias = {
+              center: currentDest.location,
+              radius: 50000 // 50km radius bias
+            };
+          }
+
+          const element = new PlaceAutocompleteElement(locationBias ? { locationBias } : undefined);
+          if (locationBias) {
+            try {
+              element.locationBias = locationBias;
+            } catch {
+              // ignore
+            }
+          }
+
+          const shortDest = destination ? destination.split(',')[0].trim() : '';
+          element.placeholder = shortDest
+            ? `Search ${cellType === 'place' ? 'places' : 'points & landmarks'} in ${shortDest}...`
+            : cellType === 'place'
+            ? 'Search place or address...'
+            : 'Search point or landmark...';
+
+          autocompleteElementRef.current = element;
           googleContainerRef.current.innerHTML = '';
           googleContainerRef.current.appendChild(element);
 
@@ -140,24 +194,42 @@ export function PlaceSearchModalContent({
 
     return () => {
       isSubscribed = false;
+      autocompleteElementRef.current = null;
     };
-  }, [googleReady]);
+  }, [googleReady, cellType]);
 
-  // Update suggestions for demo/fallback mode when query changes
+  // Dynamically update locationBias if destination coordinates resolve later
+  useEffect(() => {
+    if (!autocompleteElementRef.current) return;
+    const currentDest = destinationData || resolvedDestData;
+    let locationBias: any = undefined;
+    if (currentDest?.viewport) {
+      locationBias = currentDest.viewport;
+    } else if (currentDest?.location) {
+      locationBias = {
+        center: currentDest.location,
+        radius: 50000
+      };
+    }
+
+    if (locationBias) {
+      try {
+        autocompleteElementRef.current.locationBias = locationBias;
+      } catch {
+        // ignore
+      }
+    }
+  }, [destinationData, resolvedDestData]);
+
+  // Update suggestions for demo/fallback mode when query or destination changes
   useEffect(() => {
     if (googleReady) {
-      // In Google mode, Google's pac-container handles autocomplete dropdown
       return;
     }
 
-    if (!searchQuery.trim()) {
-      setSuggestions(searchDemoPlaces(''));
-      return;
-    }
-
-    const results = searchDemoPlaces(searchQuery);
+    const results = searchDemoPlaces(searchQuery, destination);
     setSuggestions(results);
-  }, [searchQuery, googleReady]);
+  }, [searchQuery, destination, googleReady]);
 
   const handleSelectSuggestion = (place: PlaceSearchResult) => {
     const updated: CellData = {
@@ -200,16 +272,25 @@ export function PlaceSearchModalContent({
     onChange(updated);
   };
 
+  const shortDestinationName = destination ? destination.split(',')[0].trim() : '';
+
   return (
     <div className="place-search-container">
       {/* Search Input Section */}
       <div className="place-search-field-wrap">
         <label className="place-search-label">
-          <span>Search place or address</span>
+          <div className="place-search-label-text">
+            <span>Search {cellType === 'place' ? 'place or address' : 'point or landmark'}</span>
+            {destination ? (
+              <span className="places-destination-badge" title={`Search is focused in and around ${destination}`}>
+                <span className="places-destination-pin">📍</span> {destination}
+              </span>
+            ) : null}
+          </div>
           {googleReady ? (
             <span className="places-status-tag places-status-tag--google">Google Places 🌐</span>
           ) : googleLoading ? (
-            <span className="places-status-tag places-status-tag--loading">Connecting to Google Places... ⏳</span>
+            <span className="places-status-tag places-status-tag--loading">Connecting... ⏳</span>
           ) : (
             <span className="places-status-tag places-status-tag--demo" title="Add VITE_GOOGLE_MAPS_API_KEY in .env for live worldwide Google search">
               Demo search active 📍
@@ -264,7 +345,11 @@ export function PlaceSearchModalContent({
               ref={inputRef}
               type="text"
               className="place-search-input"
-              placeholder="Search place (e.g. Shibuya, Colosseum, Taj Mahal)..."
+              placeholder={
+                shortDestinationName
+                  ? `Search in ${shortDestinationName} (e.g. attractions, cafes)...`
+                  : 'Search place (e.g. Shibuya, Colosseum, Taj Mahal)...'
+              }
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -281,7 +366,7 @@ export function PlaceSearchModalContent({
                     } else {
                       handleSelectSuggestion({
                         text: searchQuery.trim(),
-                        address: 'Custom destination',
+                        address: destination ? `Place in ${destination}` : 'Custom destination',
                         photoUrl: 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=640&q=80',
                         placeId: `custom-${Date.now()}`
                       });
@@ -310,7 +395,11 @@ export function PlaceSearchModalContent({
         {/* Demo suggestions dropdown (active when Google API is not loaded or during demo mode) */}
         {!googleReady && !googleLoading && showSuggestions && suggestions.length > 0 ? (
           <div className="places-suggestions-dropdown">
-            <div className="places-suggestions-header">Popular destinations & suggestions</div>
+            <div className="places-suggestions-header">
+              {shortDestinationName
+                ? `Places in & around ${shortDestinationName}`
+                : 'Popular destinations & suggestions'}
+            </div>
             {suggestions.map((item) => (
               <button
                 key={item.placeId || item.text}

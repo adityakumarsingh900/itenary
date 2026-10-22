@@ -9,8 +9,10 @@ import {
 } from '../types';
 import {
   calculateCommute,
+  commuteCache,
   CommuteEstimate,
-  getCommuteModeEmoji
+  getCommuteModeEmoji,
+  getRouteCacheKey
 } from '../utils/commute';
 
 interface CommuteBridgeProps {
@@ -22,29 +24,6 @@ interface CommuteBridgeProps {
   preference?: CommuteSegmentData;
   onOpenCommute: () => void;
   onInsert: () => void;
-}
-
-// Global in-memory cache to prevent duplicate Google Maps queries for identical routes
-const commuteCache = new Map<string, CommuteEstimate>();
-
-function getRouteCacheKey(
-  fromVal?: CellValue,
-  toVal?: CellValue,
-  mode: CommuteMode = 'DRIVING'
-): string | null {
-  if (!fromVal || !toVal) return null;
-
-  const fromLoc = getCellLocation(fromVal);
-  const toLoc = getCellLocation(toVal);
-  const fromText = fromLoc
-    ? `${fromLoc.lat.toFixed(5)},${fromLoc.lng.toFixed(5)}`
-    : getCellAddress(fromVal) || getCellText(fromVal);
-  const toText = toLoc
-    ? `${toLoc.lat.toFixed(5)},${toLoc.lng.toFixed(5)}`
-    : getCellAddress(toVal) || getCellText(toVal);
-
-  if (!fromText || !toText) return null;
-  return `${fromText}->${toText}:${mode}`;
 }
 
 export function CommuteBridge({
