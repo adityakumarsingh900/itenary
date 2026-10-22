@@ -597,6 +597,66 @@ function PlannerPage({
   const totalActivitiesCount = useMemo(() => {
     return Object.values(rowOrders).reduce((sum, order) => sum + order.length, 0);
   }, [rowOrders]);
+
+  const dateRowStays = useMemo(() => {
+    const stays: Record<
+      string,
+      { name: string; cellValue?: CellValue; isInherited: boolean }
+    > = {};
+    let currentStayName = '';
+    let currentStayValue: CellValue | undefined = undefined;
+
+    for (let i = 0; i < dateRows.length; i++) {
+      const row = dateRows[i];
+      const order = rowOrders[row.key] ?? [];
+      const rowCells = cells[row.key] ?? {};
+
+      // Find the last place in this date row
+      let lastPlaceValue: CellValue | undefined = undefined;
+
+      for (let j = order.length - 1; j >= 0; j--) {
+        const slotId = order[j];
+        const val = rowCells[slotId];
+        if (!val) continue;
+
+        const text = getCellText(val).trim();
+        if (!text) continue;
+
+        const cType = resolveCellType(slotId, cellTypes);
+        // Only cells of type 'place' (purple) represent places/stays, never 'point' (orange)
+        if (cType === 'place') {
+          lastPlaceValue = val;
+          break;
+        }
+      }
+
+      if (lastPlaceValue) {
+        currentStayName = getCellText(lastPlaceValue).trim();
+        currentStayValue = lastPlaceValue;
+        stays[row.key] = {
+          name: currentStayName,
+          cellValue: currentStayValue,
+          isInherited: false
+        };
+      } else if (currentStayName) {
+        // Inherited from previous day
+        stays[row.key] = {
+          name: currentStayName,
+          cellValue: currentStayValue,
+          isInherited: true
+        };
+      } else {
+        // No place added on or before this day
+        stays[row.key] = {
+          name: '',
+          cellValue: undefined,
+          isInherited: false
+        };
+      }
+    }
+
+    return stays;
+  }, [dateRows, rowOrders, cells, cellTypes]);
   const [overviewExpanded, setOverviewExpanded] = useState(false);
   const [pickerTarget, setPickerTarget] = useState<{ rowKey: string; insertIndex?: number } | null>(null);
   const [activeCommuteSegment, setActiveCommuteSegment] = useState<{
@@ -941,12 +1001,52 @@ function PlannerPage({
 
                   const currFirstCell = findFirstContentCell(order, cells[row.key]);
                   const dayCommuteKey = `dayCommute:${row.key}`;
+                  const stay = dateRowStays[row.key];
+                  const stayTooltip = stay?.name
+                    ? stay.isInherited
+                      ? `Stay: ${stay.name} (continued from previous day)\nClick to add or change stay place`
+                      : `Stay: ${stay.name} (last place on ${row.label})\nClick to add or change stay place`
+                    : `No stay place set for ${row.label}\nClick to add a place`;
 
                   return (
                     <DroppablePlannerRow key={row.key} rowKey={row.key}>
                       <div className="planner-row-date">
-                        <strong>{row.label}</strong>
-                        <span>{row.weekday}</span>
+                        <div className="planner-date-meta">
+                          <strong>{row.label}</strong>
+                          <span>{row.weekday}</span>
+                        </div>
+
+                        <div
+                          className={`planner-row-stay ${
+                            stay?.name
+                              ? stay.isInherited
+                                ? 'planner-row-stay--inherited'
+                                : 'planner-row-stay--set'
+                              : 'planner-row-stay--empty'
+                          }`}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setPickerTarget({ rowKey: row.key })}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              setPickerTarget({ rowKey: row.key });
+                            }
+                          }}
+                          title={stayTooltip}
+                          aria-label={stayTooltip}
+                        >
+                          <span className="planner-stay-icon" aria-hidden="true">
+                            🏨
+                          </span>
+                          <span
+                            className={`planner-stay-name ${
+                              !stay?.name ? 'planner-stay-name--placeholder' : ''
+                            }`}
+                          >
+                            {stay?.name || 'Add place'}
+                          </span>
+                        </div>
                       </div>
 
                       <SortableContext

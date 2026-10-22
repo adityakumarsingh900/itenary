@@ -420,27 +420,114 @@ textarea:focus {
   position: sticky;
   left: 0;
   z-index: 5;
-  flex: 0 0 190px;
-  width: 190px;
-  display: grid;
-  gap: 6px;
+  flex: 0 0 200px;
+  width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   align-content: start;
-  padding: 14px 16px;
+  justify-content: space-between;
+  padding: 12px 14px;
   border-radius: 18px;
   background: linear-gradient(180deg, #fffaf5 0%, #ffffff 100%);
   border: 1px solid rgba(23, 50, 77, 0.08);
   box-shadow: 2px 0 10px rgba(23, 50, 77, 0.05);
+  box-sizing: border-box;
 }
 
+.planner-date-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.planner-date-meta strong,
 .planner-row-date strong {
   color: var(--text-dark);
   font-size: 1rem;
+  line-height: 1.2;
 }
 
+.planner-date-meta span,
 .planner-row-date span {
   color: var(--text-muted);
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   font-weight: 700;
+  line-height: 1.2;
+}
+
+.planner-row-stay {
+  margin-top: 4px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(124, 58, 237, 0.08);
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.planner-row-stay:hover {
+  background: rgba(124, 58, 237, 0.14);
+  border-color: rgba(124, 58, 237, 0.38);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(124, 58, 237, 0.12);
+}
+
+.planner-row-stay:active {
+  transform: translateY(0);
+}
+
+.planner-row-stay--set {
+  background: rgba(124, 58, 237, 0.09);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+}
+
+.planner-row-stay--inherited {
+  background: rgba(124, 58, 237, 0.04);
+  border: 1px dashed rgba(124, 58, 237, 0.22);
+}
+
+.planner-row-stay--empty {
+  background: rgba(23, 50, 77, 0.03);
+  border: 1px dashed rgba(23, 50, 77, 0.14);
+  opacity: 0.8;
+}
+
+.planner-row-stay--empty:hover {
+  background: rgba(23, 50, 77, 0.06);
+  border-color: rgba(23, 50, 77, 0.25);
+  opacity: 1;
+}
+
+.planner-stay-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.planner-stay-name {
+  font-family: 'Fredoka', 'Manrope', system-ui, sans-serif;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #3b0764;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  min-width: 0;
+  flex: 1;
+}
+
+.planner-stay-name--placeholder {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.8rem;
 }
 
 .planner-row-cells {
