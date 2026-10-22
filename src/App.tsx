@@ -31,6 +31,7 @@ import {
   getCellPhoto,
   getCellText,
   normalizeCellValue,
+  PackingItem,
   PlannerCellMap,
   PlannerColumn,
   PlannerCommuteMap,
@@ -44,6 +45,8 @@ import { CommuteBridge } from './components/CommuteBridge';
 import { DayCommuteCell } from './components/DayCommuteCell';
 import { DestinationAutocomplete } from './components/DestinationAutocomplete';
 import { MobilePlannerView } from './components/MobilePlannerView';
+import { DashboardView } from './components/DashboardView';
+import { DEFAULT_PACKING_ITEMS } from './utils/dashboard';
 import {
   calculateCommute,
   findFirstContentCell,
@@ -53,7 +56,7 @@ import {
 import { geocodeDestination, isGoogleMapsConfigured, loadGooglePlacesScript } from './utils/googlePlaces';
 import { useIsMobile } from './utils/useIsMobile';
 
-type PageMode = 'setup' | 'planner';
+type PageMode = 'setup' | 'planner' | 'dashboard';
 
 const defaultColumns: PlannerColumn[] = [];
 
@@ -431,7 +434,12 @@ function DroppablePlannerRow({
   const { setNodeRef, isOver } = useDroppable({ id: `row:${rowKey}` });
 
   return (
-    <section ref={setNodeRef} className={`planner-row ${isOver ? 'planner-row--over' : ''}`}>
+    <section
+      ref={setNodeRef}
+      id={`row-${rowKey}`}
+      data-row-key={rowKey}
+      className={`planner-row ${isOver ? 'planner-row--over' : ''}`}
+    >
       {children}
     </section>
   );
@@ -552,6 +560,7 @@ function PlannerPage({
   cellTypes,
   lastSavedAt,
   onBack,
+  onNavigateToDashboard,
   onTripReset,
   onTripNameChange,
   onStartDateChange,
@@ -580,6 +589,7 @@ function PlannerPage({
   commutes?: PlannerCommuteMap;
   lastSavedAt: string | null;
   onBack: () => void;
+  onNavigateToDashboard: () => void;
   onTripReset: () => void;
   onTripNameChange: (value: string) => void;
   onStartDateChange: (value: string) => void;
@@ -912,6 +922,58 @@ function PlannerPage({
       <div className="ambient ambient-one" />
       <div className="ambient ambient-two" />
 
+      {/* Top Application Bar with View Switcher */}
+      <header className="dashboard-nav-bar planner-nav-bar">
+        <div className="dashboard-nav-left">
+          <div className="dashboard-nav-logo">✈️</div>
+          <div>
+            <h2 className="dashboard-nav-title">{tripName || destination || 'My Trip'}</h2>
+            <span className="dashboard-nav-subtitle">
+              📍 {destination} • {dateRows.length} Days
+            </span>
+          </div>
+        </div>
+
+        <div className="view-switcher-tabs" role="tablist">
+          <button
+            type="button"
+            className="view-tab active"
+            role="tab"
+            aria-selected="true"
+          >
+            📋 Itinerary Planner
+          </button>
+          <button
+            type="button"
+            className="view-tab"
+            role="tab"
+            aria-selected="false"
+            onClick={onNavigateToDashboard}
+          >
+            📊 Trip Dashboard
+          </button>
+        </div>
+
+        <div className="dashboard-nav-actions">
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={onNavigateToDashboard}
+            title="Open Trip Dashboard"
+          >
+            📊 Dashboard
+          </button>
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={onBack}
+            title="Edit destination and travel dates"
+          >
+            ⚙️ Setup
+          </button>
+        </div>
+      </header>
+
       <section className={`planner-top-card hero-card ${overviewExpanded ? 'planner-top-card--expanded' : 'planner-top-card--compact'}`}>
         <div className="planner-top-summary">
           <span className="eyebrow">
@@ -949,6 +1011,9 @@ function PlannerPage({
             </div>
 
             <div className="planner-action-row">
+              <button className="primary-button" type="button" onClick={onNavigateToDashboard}>
+                View Dashboard ➔
+              </button>
               <button className="secondary-button" type="button" onClick={onBack}>
                 Edit trip details
               </button>
@@ -1499,6 +1564,9 @@ function getPageFromLocation(): PageMode {
   const hash = window.location.hash;
 
   // Seamless migration from legacy hash
+  if (pathname === '/dashboard' || hash === '#dashboard') {
+    return 'dashboard';
+  }
   if (pathname === '/planner' || hash === '#planner') {
     return 'planner';
   }
@@ -1530,6 +1598,8 @@ function App() {
   const [rowOrders, setRowOrders] = useState<Record<string, string[]>>({});
   const [cellTypes, setCellTypes] = useState<Record<string, CellType>>({});
   const [commutes, setCommutes] = useState<PlannerCommuteMap>({});
+  const [packingList, setPackingList] = useState<PackingItem[]>(DEFAULT_PACKING_ITEMS);
+  const [tripNotes, setTripNotes] = useState<string>('');
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const dateRows = useMemo(() => buildDateRows(startDate, endDate), [startDate, endDate]);
 
@@ -1570,6 +1640,12 @@ function App() {
       if (saved.commutes) {
         setCommutes(saved.commutes);
       }
+      if (saved.packingList && saved.packingList.length > 0) {
+        setPackingList(saved.packingList);
+      }
+      if (saved.tripNotes) {
+        setTripNotes(saved.tripNotes);
+      }
       setRowOrders(
         buildRowOrders(
           buildDateRows(saved.startDate, saved.endDate).map((row) => row.key),
@@ -1581,7 +1657,9 @@ function App() {
         ? (window.location.pathname.replace(/\/+$/, '') || '/')
         : '/';
 
-      if (initialPath === '/setup' || (typeof window !== 'undefined' && window.location.hash === '#setup')) {
+      if (initialPath === '/dashboard' || (typeof window !== 'undefined' && window.location.hash === '#dashboard')) {
+        setPage('dashboard');
+      } else if (initialPath === '/setup' || (typeof window !== 'undefined' && window.location.hash === '#setup')) {
         setPage('setup');
       } else {
         setPage('planner');
@@ -1612,7 +1690,9 @@ function App() {
       const currentPath = window.location.pathname.replace(/\/+$/, '') || '/';
       const hash = window.location.hash;
 
-      if (hash === '#planner') {
+      if (hash === '#dashboard') {
+        window.history.replaceState(null, '', '/dashboard');
+      } else if (hash === '#planner') {
         window.history.replaceState(null, '', '/planner');
       } else if (hash === '#setup') {
         window.history.replaceState(null, '', '/setup');
@@ -1641,7 +1721,9 @@ function App() {
         cells,
         rowOrders,
         cellTypes,
-        commutes
+        commutes,
+        packingList,
+        tripNotes
       };
 
       savePlannerState(state);
@@ -1649,7 +1731,7 @@ function App() {
     }, 120);
 
     return () => window.clearTimeout(timeout);
-  }, [cellTypes, columns, cells, commutes, destination, destinationData, endDate, hydrated, rowOrders, startDate, tripName]);
+  }, [cellTypes, columns, cells, commutes, destination, destinationData, endDate, hydrated, packingList, rowOrders, startDate, tripName, tripNotes]);
 
   const changeStartDate = (value: string) => {
     const adjusted = adjustStartDate(value, endDate);
@@ -1752,6 +1834,8 @@ function App() {
     setRowOrders(fresh.rowOrders);
     setCellTypes({});
     setCommutes({});
+    setPackingList(DEFAULT_PACKING_ITEMS);
+    setTripNotes('');
     clearPlannerState();
     setLastSavedAt(null);
     navigateTo('/', 'setup');
@@ -1793,6 +1877,38 @@ function App() {
     );
   }
 
+  if (page === 'dashboard') {
+    return (
+      <DashboardView
+        tripName={tripName || destination}
+        destination={destination}
+        destinationData={destinationData}
+        startDate={startDate}
+        endDate={endDate}
+        rowOrders={rowOrders}
+        cells={cells}
+        cellTypes={cellTypes}
+        commutes={commutes}
+        packingList={packingList}
+        tripNotes={tripNotes}
+        onPackingListChange={setPackingList}
+        onTripNotesChange={setTripNotes}
+        onNavigateToPlanner={(dayKey) => {
+          navigateTo('/planner', 'planner');
+          if (dayKey) {
+            setTimeout(() => {
+              const el = document.getElementById(`row-${dayKey}`);
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+            }, 150);
+          }
+        }}
+        onNavigateToSetup={goBackToSetup}
+      />
+    );
+  }
+
   return (
     <PlannerPage
       tripName={tripName || destination}
@@ -1807,6 +1923,7 @@ function App() {
       commutes={commutes}
       lastSavedAt={lastSavedAt}
       onBack={goBackToSetup}
+      onNavigateToDashboard={() => navigateTo('/dashboard', 'dashboard')}
       onTripReset={resetPlanner}
       onTripNameChange={setTripName}
       onStartDateChange={changeStartDate}

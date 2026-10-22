@@ -53,6 +53,13 @@ export type DestinationData = {
 
 export type PlannerCommuteMap = Record<string, CommuteSegmentData>;
 
+export type PackingItem = {
+  id: string;
+  text: string;
+  done: boolean;
+  category?: string;
+};
+
 export type PlannerState = {
   version: 1;
   tripName: string;
@@ -65,6 +72,8 @@ export type PlannerState = {
   rowOrders: PlannerRowOrderMap;
   cellTypes?: PlannerCellTypeMap;
   commutes?: PlannerCommuteMap;
+  packingList?: PackingItem[];
+  tripNotes?: string;
 };
 
 export type DateRow = {
