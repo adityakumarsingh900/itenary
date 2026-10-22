@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { format, parseISO } from 'date-fns';
 import {
   CellValue,
   CellType,
@@ -371,21 +372,35 @@ export function MobilePlannerView({
         <div className="mobile-planner-nav-scroll">
           <button
             type="button"
-            className={`mobile-day-pill ${selectedDayKey === 'all' ? 'mobile-day-pill--active' : ''}`}
+            className={`mobile-day-pill mobile-day-pill--all ${selectedDayKey === 'all' ? 'mobile-day-pill--active' : ''}`}
             onClick={() => handleSelectTab('all')}
           >
-            All Days
+            <span className="mobile-day-pill-weekday">All</span>
+            <span className="mobile-day-pill-date">Days</span>
           </button>
-          {dateRows.map((row, index) => {
+          {dateRows.map((row) => {
             const isActive = selectedDayKey === row.key;
+            let shortWeekday = row.weekday.slice(0, 3);
+            let shortDate = row.label;
+
+            try {
+              const d = parseISO(row.key);
+              shortWeekday = format(d, 'EEE');
+              shortDate = format(d, 'd MMM');
+            } catch {
+              // fallback to slice
+            }
+
             return (
               <button
                 key={row.key}
                 type="button"
                 className={`mobile-day-pill ${isActive ? 'mobile-day-pill--active' : ''}`}
                 onClick={() => handleSelectTab(row.key)}
+                aria-label={`${row.weekday}, ${row.label}`}
               >
-                Day {index + 1}
+                <span className="mobile-day-pill-weekday">{shortWeekday}</span>
+                <span className="mobile-day-pill-date">{shortDate}</span>
               </button>
             );
           })}

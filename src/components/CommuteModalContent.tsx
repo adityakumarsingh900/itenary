@@ -199,6 +199,9 @@ export function CommuteModalContent({
 
       {/* Modal Actions */}
       <div className="cell-modal-actions">
+        <button className="secondary-button" type="button" onClick={onCancel}>
+          Cancel
+        </button>
         <button
           className="primary-button"
           type="button"
@@ -206,9 +209,6 @@ export function CommuteModalContent({
           disabled={!commuteText.trim() || isCalculating}
         >
           Save commute
-        </button>
-        <button className="secondary-button" type="button" onClick={onCancel}>
-          Cancel
         </button>
       </div>
     </div>

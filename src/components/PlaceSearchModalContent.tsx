@@ -132,6 +132,31 @@ export function PlaceSearchModalContent({
           googleContainerRef.current.innerHTML = '';
           googleContainerRef.current.appendChild(element);
 
+          const focusGoogleInput = () => {
+            if (!element) return;
+            try {
+              const shadowInput = element.shadowRoot?.querySelector('input');
+              if (shadowInput && typeof shadowInput.focus === 'function') {
+                shadowInput.focus();
+                return;
+              }
+              const directInput = element.querySelector('input');
+              if (directInput && typeof directInput.focus === 'function') {
+                directInput.focus();
+                return;
+              }
+              if (typeof element.focus === 'function') {
+                element.focus();
+              }
+            } catch {
+              // ignore
+            }
+          };
+
+          setTimeout(focusGoogleInput, 60);
+          setTimeout(focusGoogleInput, 180);
+          setTimeout(focusGoogleInput, 350);
+
           const handleSelect = async (event: any) => {
             try {
               let place = event.place;
@@ -230,6 +255,16 @@ export function PlaceSearchModalContent({
     const results = searchDemoPlaces(searchQuery, destination);
     setSuggestions(results);
   }, [searchQuery, destination, googleReady]);
+
+  // Immediately focus the search input on mount so the user can start typing right away
+  useEffect(() => {
+    if (!googleReady) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [googleReady]);
 
   const handleSelectSuggestion = (place: PlaceSearchResult) => {
     const updated: CellData = {
@@ -344,6 +379,7 @@ export function PlaceSearchModalContent({
             <input
               ref={inputRef}
               type="text"
+              autoFocus
               className="place-search-input"
               placeholder={
                 shortDestinationName

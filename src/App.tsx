@@ -1207,273 +1207,285 @@ function PlannerPage({
       </section>
 
       {/* Commute Modal */}
-      {activeCommuteSegment ? (
-        <div
-          className="cell-modal-backdrop"
-          role="presentation"
-          onClick={() => setActiveCommuteSegment(null)}
-        >
-          <section
-            className="cell-modal cell-modal--commute"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Edit Commute"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="cell-modal-header">
-              <div>
-                <span className="eyebrow">COMMUTE</span>
-                <h3>
-                  {activeCommuteSegment.isDayCommute
-                    ? 'Commute from previous day'
-                    : 'Travel between stops'}
-                </h3>
-              </div>
-              <button
-                className="icon-button"
-                type="button"
-                onClick={() => setActiveCommuteSegment(null)}
-                aria-label="Close modal"
+      {activeCommuteSegment && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="cell-modal-backdrop"
+              role="presentation"
+              onClick={() => setActiveCommuteSegment(null)}
+            >
+              <section
+                className="cell-modal cell-modal--commute"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Edit Commute"
+                onClick={(event) => event.stopPropagation()}
               >
-                ×
-              </button>
-            </div>
+                <div className="cell-modal-header">
+                  <div>
+                    <span className="eyebrow">COMMUTE</span>
+                    <h3>
+                      {activeCommuteSegment.isDayCommute
+                        ? 'Commute from previous day'
+                        : 'Travel between stops'}
+                    </h3>
+                  </div>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    onClick={() => setActiveCommuteSegment(null)}
+                    aria-label="Close modal"
+                  >
+                    ×
+                  </button>
+                </div>
 
-            <CommuteModalContent
-              origin={activeCommuteSegment.fromValue}
-              destination={activeCommuteSegment.toValue}
-              initialValue={{
-                text:
-                  activeCommuteSegment.preference?.customText ||
-                  activeCommuteSegment.preference?.durationText ||
-                  '',
-                commuteMode: activeCommuteSegment.preference?.mode || 'DRIVING',
-                commuteDistance: activeCommuteSegment.preference?.distanceText,
-                originName:
-                  getCellText(activeCommuteSegment.fromValue) ||
-                  (activeCommuteSegment.isDayCommute ? 'Previous day stop' : ''),
-                destinationName:
-                  getCellText(activeCommuteSegment.toValue) ||
-                  (activeCommuteSegment.isDayCommute ? 'First stop of day' : '')
-              }}
-              onSave={(updatedVal) => {
-                const norm = normalizeCellValue(updatedVal);
-                const segmentKey = activeCommuteSegment.isDayCommute
-                  ? `dayCommute:${activeCommuteSegment.rowKey}`
-                  : `${activeCommuteSegment.rowKey}:${activeCommuteSegment.fromSlotId}->${activeCommuteSegment.toSlotId}`;
-                onCommutesChange((prev) => ({
-                  ...prev,
-                  [segmentKey]: {
-                    mode: norm.commuteMode || 'DRIVING',
-                    customText: norm.text,
-                    durationText: norm.text,
-                    distanceText: norm.commuteDistance
-                  }
-                }));
-                setActiveCommuteSegment(null);
-              }}
-              onCancel={() => setActiveCommuteSegment(null)}
-            />
-          </section>
-        </div>
-      ) : null}
+                <CommuteModalContent
+                  origin={activeCommuteSegment.fromValue}
+                  destination={activeCommuteSegment.toValue}
+                  initialValue={{
+                    text:
+                      activeCommuteSegment.preference?.customText ||
+                      activeCommuteSegment.preference?.durationText ||
+                      '',
+                    commuteMode: activeCommuteSegment.preference?.mode || 'DRIVING',
+                    commuteDistance: activeCommuteSegment.preference?.distanceText,
+                    originName:
+                      getCellText(activeCommuteSegment.fromValue) ||
+                      (activeCommuteSegment.isDayCommute ? 'Previous day stop' : ''),
+                    destinationName:
+                      getCellText(activeCommuteSegment.toValue) ||
+                      (activeCommuteSegment.isDayCommute ? 'First stop of day' : '')
+                  }}
+                  onSave={(updatedVal) => {
+                    const norm = normalizeCellValue(updatedVal);
+                    const segmentKey = activeCommuteSegment.isDayCommute
+                      ? `dayCommute:${activeCommuteSegment.rowKey}`
+                      : `${activeCommuteSegment.rowKey}:${activeCommuteSegment.fromSlotId}->${activeCommuteSegment.toSlotId}`;
+                    onCommutesChange((prev) => ({
+                      ...prev,
+                      [segmentKey]: {
+                        mode: norm.commuteMode || 'DRIVING',
+                        customText: norm.text,
+                        durationText: norm.text,
+                        distanceText: norm.commuteDistance
+                      }
+                    }));
+                    setActiveCommuteSegment(null);
+                  }}
+                  onCancel={() => setActiveCommuteSegment(null)}
+                />
+              </section>
+            </div>,
+            document.body
+          )
+        : null}
 
       {/* Place / Point Edit Modal */}
-      {editingCell ? (
-        <div className="cell-modal-backdrop" role="presentation" onClick={closeEditor}>
-          <section
-            className="cell-modal cell-modal--place-search"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Edit cell"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="cell-modal-header">
-              <div>
-                <span className={`eyebrow eyebrow--${editingCell.type}`}>
-                  {editingCell.type === 'place'
-                    ? 'Place • Destination'
-                    : 'Point • Landmark'}
-                </span>
-                <h3>
-                  {editingCell.type === 'place'
-                    ? 'Search place or address'
-                    : 'Search point or landmark'}
-                </h3>
-              </div>
-              <button className="icon-button" type="button" onClick={closeEditor} aria-label="Close editor">
-                ×
-              </button>
-            </div>
-
-            <PlaceSearchModalContent
-              cellType={editingCell.type}
-              initialData={normalizeCellValue(editingCell.value)}
-              onChange={(newData) => {
-                setEditingCell((current) =>
-                  current ? { ...current, value: newData } : current
-                );
-              }}
-              onSave={() => saveEditorValue()}
-              onCancel={closeEditor}
-              destination={destination}
-              destinationData={destinationData}
-            />
-          </section>
-        </div>
-      ) : null}
-
-      {pickerTarget ? (
-        <div
-          className="cell-modal-backdrop"
-          role="presentation"
-          onClick={() => setPickerTarget(null)}
-        >
-          <section
-            className="cell-modal cell-type-picker-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Choose cell type"
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                event.preventDefault();
-                setPickerTarget(null);
-              }
-            }}
-          >
-            <div className="cell-modal-header">
-              <div>
-                <span className="eyebrow">
-                  {pickerTarget.insertIndex !== undefined ? 'Insert activity' : 'Add new activity'}
-                </span>
-                <h3>Choose cell type</h3>
-              </div>
-              <button
-                className="icon-button"
-                type="button"
-                onClick={() => setPickerTarget(null)}
-                aria-label="Close modal"
+      {editingCell && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="cell-modal-backdrop" role="presentation" onClick={closeEditor}>
+              <section
+                className="cell-modal cell-modal--place-search"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Edit cell"
+                onClick={(event) => event.stopPropagation()}
               >
-                ×
-              </button>
-            </div>
-
-            <div className="cell-type-options">
-              <button
-                type="button"
-                className="cell-type-option cell-type-option--point"
-                onClick={() => handleSelectCellType('point')}
-              >
-                <div className="cell-type-icon cell-type-icon--point" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="8" />
-                    <circle cx="12" cy="12" r="3" fill="currentColor" />
-                  </svg>
+                <div className="cell-modal-header">
+                  <div>
+                    <span className={`eyebrow eyebrow--${editingCell.type}`}>
+                      {editingCell.type === 'place'
+                        ? 'Place • Destination'
+                        : 'Point • Landmark'}
+                    </span>
+                    <h3>
+                      {editingCell.type === 'place'
+                        ? 'Search place or address'
+                        : 'Search point or landmark'}
+                    </h3>
+                  </div>
+                  <button className="icon-button" type="button" onClick={closeEditor} aria-label="Close editor">
+                    ×
+                  </button>
                 </div>
-                <div className="cell-type-info">
-                  <strong className="cell-type-title">Point</strong>
-                  <span className="cell-type-desc">Highlight or stop with orange font</span>
+
+                <PlaceSearchModalContent
+                  cellType={editingCell.type}
+                  initialData={normalizeCellValue(editingCell.value)}
+                  onChange={(newData) => {
+                    setEditingCell((current) =>
+                      current ? { ...current, value: newData } : current
+                    );
+                  }}
+                  onSave={() => saveEditorValue()}
+                  onCancel={closeEditor}
+                  destination={destination}
+                  destinationData={destinationData}
+                />
+              </section>
+            </div>,
+            document.body
+          )
+        : null}
+
+      {pickerTarget && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="cell-modal-backdrop"
+              role="presentation"
+              onClick={() => setPickerTarget(null)}
+            >
+              <section
+                className="cell-modal cell-type-picker-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Choose cell type"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setPickerTarget(null);
+                  }
+                }}
+              >
+                <div className="cell-modal-header">
+                  <div>
+                    <span className="eyebrow">
+                      {pickerTarget.insertIndex !== undefined ? 'Insert activity' : 'Add new activity'}
+                    </span>
+                    <h3>Choose cell type</h3>
+                  </div>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    onClick={() => setPickerTarget(null)}
+                    aria-label="Close modal"
+                  >
+                    ×
+                  </button>
                 </div>
-                <span className="cell-type-badge cell-type-badge--point">Orange text</span>
-              </button>
 
-              <button
-                type="button"
-                className="cell-type-option cell-type-option--place"
-                onClick={() => handleSelectCellType('place')}
-              >
-                <div className="cell-type-icon cell-type-icon--place" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                    <circle cx="12" cy="10" r="3" />
-                  </svg>
+                <div className="cell-type-options">
+                  <button
+                    type="button"
+                    className="cell-type-option cell-type-option--point"
+                    onClick={() => handleSelectCellType('point')}
+                  >
+                    <div className="cell-type-icon cell-type-icon--point" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="8" />
+                        <circle cx="12" cy="12" r="3" fill="currentColor" />
+                      </svg>
+                    </div>
+                    <div className="cell-type-info">
+                      <strong className="cell-type-title">Point</strong>
+                      <span className="cell-type-desc">Highlight or stop with orange font</span>
+                    </div>
+                    <span className="cell-type-badge cell-type-badge--point">Orange text</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="cell-type-option cell-type-option--place"
+                    onClick={() => handleSelectCellType('place')}
+                  >
+                    <div className="cell-type-icon cell-type-icon--place" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                        <circle cx="12" cy="10" r="3" />
+                      </svg>
+                    </div>
+                    <div className="cell-type-info">
+                      <strong className="cell-type-title">Place</strong>
+                      <span className="cell-type-desc">Destination or venue with purple font</span>
+                    </div>
+                    <span className="cell-type-badge cell-type-badge--place">Purple text</span>
+                  </button>
                 </div>
-                <div className="cell-type-info">
-                  <strong className="cell-type-title">Place</strong>
-                  <span className="cell-type-desc">Destination or venue with purple font</span>
+
+                <div className="cell-modal-actions">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => setPickerTarget(null)}
+                  >
+                    Cancel
+                  </button>
                 </div>
-                <span className="cell-type-badge cell-type-badge--place">Purple text</span>
-              </button>
-            </div>
+              </section>
+            </div>,
+            document.body
+          )
+        : null}
 
-            <div className="cell-modal-actions">
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => setPickerTarget(null)}
+      {cellToDelete && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="cell-modal-backdrop"
+              role="presentation"
+              onClick={() => setCellToDelete(null)}
+            >
+              <section
+                className="cell-modal cell-modal--confirm"
+                role="alertdialog"
+                aria-modal="true"
+                aria-label="Delete confirmation"
+                onClick={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    event.preventDefault();
+                    setCellToDelete(null);
+                  }
+                }}
               >
-                Cancel
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
+                <div className="cell-modal-header">
+                  <div>
+                    <span className="eyebrow eyebrow--danger">Delete activity</span>
+                    <h3>Delete this note?</h3>
+                  </div>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    onClick={() => setCellToDelete(null)}
+                    aria-label="Cancel deletion"
+                  >
+                    ×
+                  </button>
+                </div>
 
-      {cellToDelete ? (
-        <div
-          className="cell-modal-backdrop"
-          role="presentation"
-          onClick={() => setCellToDelete(null)}
-        >
-          <section
-            className="cell-modal cell-modal--confirm"
-            role="alertdialog"
-            aria-modal="true"
-            aria-label="Delete confirmation"
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                event.preventDefault();
-                setCellToDelete(null);
-              }
-            }}
-          >
-            <div className="cell-modal-header">
-              <div>
-                <span className="eyebrow eyebrow--danger">Delete activity</span>
-                <h3>Delete this note?</h3>
-              </div>
-              <button
-                className="icon-button"
-                type="button"
-                onClick={() => setCellToDelete(null)}
-                aria-label="Cancel deletion"
-              >
-                ×
-              </button>
-            </div>
+                <p className="cell-delete-message">
+                  Are you sure you want to remove {getCellText(cellToDelete.value) ? (
+                    <>
+                      note <strong>&ldquo;{getCellText(cellToDelete.value)}&rdquo;</strong>
+                    </>
+                  ) : (
+                    'this empty note'
+                  )} from your itinerary? This action cannot be undone.
+                </p>
 
-            <p className="cell-delete-message">
-              Are you sure you want to remove {getCellText(cellToDelete.value) ? (
-                <>
-                  note <strong>&ldquo;{getCellText(cellToDelete.value)}&rdquo;</strong>
-                </>
-              ) : (
-                'this empty note'
-              )} from your itinerary? This action cannot be undone.
-            </p>
-
-            <div className="cell-modal-actions">
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => setCellToDelete(null)}
-                autoFocus
-              >
-                Cancel
-              </button>
-              <button
-                className="primary-button primary-button--danger"
-                type="button"
-                onClick={handleConfirmDelete}
-              >
-                Delete
-              </button>
-            </div>
-          </section>
-        </div>
-      ) : null}
+                <div className="cell-modal-actions">
+                  <button
+                    className="secondary-button"
+                    type="button"
+                    onClick={() => setCellToDelete(null)}
+                    autoFocus
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="primary-button primary-button--danger"
+                    type="button"
+                    onClick={handleConfirmDelete}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </section>
+            </div>,
+            document.body
+          )
+        : null}
     </main>
   );
 }
