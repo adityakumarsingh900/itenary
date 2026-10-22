@@ -43,6 +43,7 @@ import { CommuteModalContent } from './components/CommuteModalContent';
 import { CommuteBridge } from './components/CommuteBridge';
 import { DayCommuteCell } from './components/DayCommuteCell';
 import { DestinationAutocomplete } from './components/DestinationAutocomplete';
+import { MobilePlannerView } from './components/MobilePlannerView';
 import {
   calculateCommute,
   findFirstContentCell,
@@ -50,6 +51,7 @@ import {
   getCommuteModeEmoji
 } from './utils/commute';
 import { geocodeDestination, isGoogleMapsConfigured, loadGooglePlacesScript } from './utils/googlePlaces';
+import { useIsMobile } from './utils/useIsMobile';
 
 type PageMode = 'setup' | 'planner';
 
@@ -594,6 +596,7 @@ function PlannerPage({
   onCommutesChange: (updater: (current: PlannerCommuteMap) => PlannerCommuteMap) => void;
 }) {
   const dateRows = useMemo<DateRow[]>(() => buildDateRows(startDate, endDate), [startDate, endDate]);
+  const isMobile = useIsMobile(768);
   const totalActivitiesCount = useMemo(() => {
     return Object.values(rowOrders).reduce((sum, order) => sum + order.length, 0);
   }, [rowOrders]);
@@ -961,12 +964,44 @@ function PlannerPage({
         <div className="planner-toolbar">
           <div>
             <h2>Your route list</h2>
-            <p>Each date is a horizontal list. Drop one cell onto another to insert it and push the rest to the right.</p>
+            <p>
+              {isMobile
+                ? 'Your vertical itinerary timeline. Tap any stop to edit, use arrows to reorder, or + to insert stops.'
+                : 'Each date is a horizontal list. Drop one cell onto another to insert it and push the rest to the right.'}
+            </p>
           </div>
           <span className="planner-note">Editable cells are saved locally in this browser.</span>
         </div>
 
-        <div className="table-shell">
+        {isMobile ? (
+          <MobilePlannerView
+            tripName={tripName}
+            destination={destination}
+            destinationData={destinationData}
+            startDate={startDate}
+            endDate={endDate}
+            dateRows={dateRows}
+            dateRowStays={dateRowStays}
+            rowOrders={rowOrders}
+            cells={cells}
+            cellTypes={cellTypes}
+            commutes={commutes}
+            onOpenEditCell={(cell) => {
+              setEditingCell({
+                rowKey: cell.rowKey,
+                columnId: cell.columnId,
+                value: cell.value,
+                type: cell.type,
+                isNew: false
+              });
+            }}
+            onOpenPicker={(target) => setPickerTarget(target)}
+            onOpenCommute={(segment) => setActiveCommuteSegment(segment)}
+            onDeleteCell={(cell) => setCellToDelete(cell)}
+            onRowOrdersChange={onRowOrdersChange}
+          />
+        ) : (
+          <div className="table-shell">
           <DndContext
             sensors={sensors}
             collisionDetection={collisionDetectionStrategy}
@@ -1168,6 +1203,7 @@ function PlannerPage({
               : null}
           </DndContext>
         </div>
+        )}
       </section>
 
       {/* Commute Modal */}
@@ -1442,15 +1478,29 @@ function PlannerPage({
   );
 }
 
+function getPageFromLocation(): PageMode {
+  if (typeof window === 'undefined') {
+    return 'setup';
+  }
+
+  const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
+  const hash = window.location.hash;
+
+  // Seamless migration from legacy hash
+  if (pathname === '/planner' || hash === '#planner') {
+    return 'planner';
+  }
+  if (pathname === '/setup' || hash === '#setup') {
+    return 'setup';
+  }
+
+  // Root '/' defaults to planner if a saved itinerary exists, otherwise setup
+  return loadPlannerState() ? 'planner' : 'setup';
+}
+
 function App() {
   const [hydrated, setHydrated] = useState(false);
-  const [page, setPage] = useState<PageMode>(() => {
-    if (typeof window !== 'undefined' && window.location.hash === '#planner') {
-      return 'planner';
-    }
-
-    return loadPlannerState() ? 'planner' : 'setup';
-  });
+  const [page, setPage] = useState<PageMode>(getPageFromLocation);
   const [tripName, setTripName] = useState('Bali, Indonesia');
   const [destination, setDestination] = useState('Bali, Indonesia');
   const [destinationData, setDestinationData] = useState<DestinationData | undefined>({
@@ -1470,6 +1520,16 @@ function App() {
   const [commutes, setCommutes] = useState<PlannerCommuteMap>({});
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const dateRows = useMemo(() => buildDateRows(startDate, endDate), [startDate, endDate]);
+
+  const navigateTo = (path: string, mode: PageMode) => {
+    if (typeof window !== 'undefined') {
+      const currentPath = window.location.pathname.replace(/\/+$/, '') || '/';
+      if (currentPath !== path || window.location.hash) {
+        window.history.pushState(null, '', path);
+      }
+    }
+    setPage(mode);
+  };
 
   useEffect(() => {
     setRowOrders((current) => buildRowOrders(dateRows.map((row) => row.key), current));
@@ -1504,7 +1564,19 @@ function App() {
           normalized.rowOrders
         )
       );
-      setPage((current) => (current === 'planner' ? current : 'planner'));
+
+      const initialPath = typeof window !== 'undefined'
+        ? (window.location.pathname.replace(/\/+$/, '') || '/')
+        : '/';
+
+      if (initialPath === '/setup' || (typeof window !== 'undefined' && window.location.hash === '#setup')) {
+        setPage('setup');
+      } else {
+        setPage('planner');
+        if (typeof window !== 'undefined' && initialPath === '/') {
+          window.history.replaceState(null, '', '/planner');
+        }
+      }
     }
 
     setHydrated(true);
@@ -1517,18 +1589,27 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const syncPageFromHash = () => {
-      if (window.location.hash === '#planner') {
-        setPage('planner');
-      } else if (window.location.hash === '#setup') {
-        setPage('setup');
-      }
+    const handlePopState = () => {
+      setPage(getPageFromLocation());
     };
 
-    window.addEventListener('hashchange', syncPageFromHash);
-    syncPageFromHash();
+    window.addEventListener('popstate', handlePopState);
 
-    return () => window.removeEventListener('hashchange', syncPageFromHash);
+    // Clean up legacy hash if user landed with #planner or #setup
+    if (typeof window !== 'undefined') {
+      const currentPath = window.location.pathname.replace(/\/+$/, '') || '/';
+      const hash = window.location.hash;
+
+      if (hash === '#planner') {
+        window.history.replaceState(null, '', '/planner');
+      } else if (hash === '#setup') {
+        window.history.replaceState(null, '', '/setup');
+      } else if (currentPath === '/' && loadPlannerState()) {
+        window.history.replaceState(null, '', '/planner');
+      }
+    }
+
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   useEffect(() => {
@@ -1661,8 +1742,7 @@ function App() {
     setCommutes({});
     clearPlannerState();
     setLastSavedAt(null);
-    window.location.hash = '#setup';
-    setPage('setup');
+    navigateTo('/', 'setup');
   };
 
   const continueToPlanner = () => {
@@ -1675,13 +1755,11 @@ function App() {
     const normalized = normalizeDateRange(startDate, endDate);
     setStartDate(normalized.startDate);
     setEndDate(normalized.endDate);
-    window.location.hash = '#planner';
-    setPage('planner');
+    navigateTo('/planner', 'planner');
   };
 
   const goBackToSetup = () => {
-    window.location.hash = '#setup';
-    setPage('setup');
+    navigateTo('/setup', 'setup');
   };
 
   if (page === 'setup') {

@@ -2450,6 +2450,635 @@ textarea:focus {
   line-height: 1.2;
 }
 
+/* ==========================================================================
+   Mobile Planner View - Vertical Timeline & Touch Layout
+   ========================================================================== */
+
+.mobile-planner-root {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+}
+
+/* Sticky Day Selector Navigation Pills */
+.mobile-planner-nav {
+  position: sticky;
+  top: 12px;
+  z-index: 10;
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 50, 77, 0.1);
+  box-shadow: 0 4px 16px rgba(14, 31, 49, 0.08);
+}
+
+.mobile-planner-nav-scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  padding: 2px 0;
+}
+
+.mobile-planner-nav-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-day-pill {
+  flex: 0 0 auto;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 50, 77, 0.12);
+  background: #ffffff;
+  color: var(--text-dark);
+  font-family: 'Fredoka', 'Manrope', system-ui, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 140ms ease;
+}
+
+.mobile-day-pill:hover {
+  background: #f8fafc;
+  border-color: rgba(255, 122, 89, 0.4);
+}
+
+.mobile-day-pill--active {
+  background: var(--text-dark) !important;
+  color: #ffffff !important;
+  border-color: var(--text-dark) !important;
+  box-shadow: 0 2px 8px rgba(23, 50, 77, 0.2);
+}
+
+/* Feed & Day Sections */
+.mobile-planner-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.mobile-day-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(23, 50, 77, 0.09);
+  box-shadow: 0 4px 18px rgba(14, 31, 49, 0.04);
+}
+
+.mobile-day-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(23, 50, 77, 0.08);
+}
+
+.mobile-day-title-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mobile-day-number {
+  font-family: 'Fredoka', 'Manrope', system-ui, sans-serif;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #ff7a59;
+  text-transform: uppercase;
+}
+
+.mobile-day-date {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-dark);
+  line-height: 1.2;
+}
+
+.mobile-day-weekday {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Stay Pill on Mobile */
+.mobile-stay-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(124, 58, 237, 0.08);
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  cursor: pointer;
+  max-width: 160px;
+  min-width: 0;
+  flex-shrink: 0;
+  transition: all 140ms ease;
+}
+
+.mobile-stay-pill:hover,
+.mobile-stay-pill:active {
+  background: rgba(124, 58, 237, 0.14);
+  border-color: rgba(124, 58, 237, 0.4);
+}
+
+.mobile-stay-pill--inherited {
+  background: rgba(124, 58, 237, 0.04);
+  border-style: dashed;
+}
+
+.mobile-stay-pill--empty {
+  background: rgba(23, 50, 77, 0.04);
+  border: 1px dashed rgba(23, 50, 77, 0.15);
+}
+
+.mobile-stay-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.mobile-stay-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.mobile-stay-name {
+  font-family: 'Fredoka', 'Manrope', system-ui, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #3b0764;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.mobile-stay-pill--empty .mobile-stay-name {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* Day Commute Card */
+.mobile-day-commute-wrap {
+  width: 100%;
+}
+
+.mobile-day-commute-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f0f6ff 0%, #ffffff 100%);
+  border: 1.5px dashed rgba(37, 99, 235, 0.35);
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: all 140ms ease;
+}
+
+.mobile-day-commute-card:active {
+  background: #ffffff;
+  border-color: #2563eb;
+  border-style: solid;
+}
+
+.mobile-commute-track-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(37, 99, 235, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.mobile-commute-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mobile-commute-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mobile-commute-tag {
+  font-family: 'Fredoka', 'Manrope', system-ui, sans-serif;
+  font-size: 0.62rem;
+  font-weight: 800;
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.1);
+  padding: 1px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+}
+
+.mobile-commute-dist {
+  font-family: 'Fredoka', 'Manrope', system-ui, sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.mobile-commute-time-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mobile-commute-duration {
+  font-family: 'Righteous', 'Fredoka', system-ui, sans-serif;
+  font-size: 1rem;
+  color: #1e3a8a;
+  flex-shrink: 0;
+}
+
+.mobile-commute-route-text {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-commute-route-empty {
+  font-size: 0.78rem;
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.mobile-commute-edit-indicator {
+  font-size: 1.3rem;
+  color: #94a3b8;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* Stops Timeline */
+.mobile-stops-timeline {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.mobile-timeline-node {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* Inter-stop Commute Step Connector */
+.mobile-commute-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 0;
+  min-height: 48px;
+}
+
+.mobile-commute-connector-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 0;
+  border-left: 2px dashed rgba(23, 50, 77, 0.18);
+  transform: translateX(-50%);
+  z-index: 1;
+}
+
+.mobile-commute-pill {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1.5px solid rgba(23, 50, 77, 0.14);
+  box-shadow: 0 2px 6px rgba(14, 31, 49, 0.08);
+  font-family: 'Fredoka', 'Manrope', system-ui, sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-dark);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 120ms ease;
+}
+
+.mobile-commute-pill:active {
+  transform: scale(0.96);
+  border-color: #ff7a59;
+}
+
+.mobile-commute-pill-emoji {
+  font-size: 0.88rem;
+}
+
+.mobile-commute-pill-time {
+  font-weight: 700;
+}
+
+.mobile-commute-pill-dist {
+  font-size: 0.68rem;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 1px 5px;
+  border-radius: 6px;
+}
+
+.mobile-commute-insert-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 3;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid #ff7a59;
+  background: #ffffff;
+  color: #ff7a59;
+  font-size: 1rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(14, 31, 49, 0.08);
+  transition: all 120ms ease;
+}
+
+.mobile-commute-insert-btn:active {
+  background: #ff7a59;
+  color: #ffffff;
+}
+
+/* Activity Stop Card */
+.mobile-stop-card {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1.5px solid rgba(23, 50, 77, 0.1);
+  box-shadow: 0 2px 10px rgba(14, 31, 49, 0.04);
+  box-sizing: border-box;
+  transition: all 140ms ease;
+}
+
+.mobile-stop-card:active {
+  border-color: rgba(23, 50, 77, 0.25);
+}
+
+.mobile-stop-card--place {
+  border-left: 5px solid #7c3aed;
+}
+
+.mobile-stop-card--point {
+  border-left: 5px solid #ea580c;
+}
+
+.mobile-stop-index {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  z-index: 4;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--text-dark);
+  color: #ffffff;
+  font-family: 'Fredoka', 'Manrope', system-ui, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(14, 31, 49, 0.2);
+}
+
+.mobile-stop-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.mobile-stop-photo-wrap {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 12px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #f1f5f9;
+}
+
+.mobile-stop-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mobile-stop-photo-gradient {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 60%, rgba(0, 0, 0, 0.2) 100%);
+  pointer-events: none;
+}
+
+.mobile-stop-text-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mobile-stop-type-badge {
+  font-family: 'Fredoka', 'Manrope', system-ui, sans-serif;
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.mobile-stop-type-badge--place {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.1);
+}
+
+.mobile-stop-type-badge--point {
+  color: #ea580c;
+  background: rgba(234, 88, 12, 0.1);
+}
+
+.mobile-stop-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--text-dark);
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.mobile-stop-card--place .mobile-stop-title {
+  color: #581c87;
+}
+
+.mobile-stop-card--point .mobile-stop-title {
+  color: #9a3412;
+}
+
+.mobile-stop-address {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+/* Stop Action Buttons (Move up/down, delete) */
+.mobile-stop-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.mobile-stop-action-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 1px solid rgba(23, 50, 77, 0.1);
+  background: #f8fafc;
+  color: var(--text-dark);
+  font-size: 0.8rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: all 120ms ease;
+}
+
+.mobile-stop-action-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.mobile-stop-action-btn:not(:disabled):active {
+  background: #e2e8f0;
+}
+
+.mobile-stop-action-btn--delete {
+  color: #e53935;
+  border-color: rgba(229, 57, 53, 0.2);
+  background: rgba(255, 245, 245, 0.9);
+}
+
+.mobile-stop-action-btn--delete:active {
+  background: #e53935;
+  color: #ffffff;
+}
+
+/* Add Stop Bar at Bottom of Day */
+.mobile-add-stop-bar {
+  margin-top: 12px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 16px;
+  border: 1.5px dashed rgba(23, 50, 77, 0.2);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--text-dark);
+  font-family: 'Fredoka', 'Manrope', system-ui, sans-serif;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.mobile-add-stop-bar:active {
+  background: #ffffff;
+  border-color: #ff7a59;
+  color: #ff7a59;
+}
+
+.mobile-add-stop-plus {
+  font-size: 1.2rem;
+  line-height: 1;
+  color: #ff7a59;
+  font-weight: 800;
+}
+
+/* Empty State */
+.mobile-empty-stops {
+  padding: 24px 16px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 16px;
+  border: 1px dashed rgba(23, 50, 77, 0.12);
+}
+
+.mobile-empty-stops p {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+.mobile-add-first-stop-btn {
+  padding: 10px 20px;
+  font-size: 0.92rem;
+}
+
+
 
 
 
