@@ -169,16 +169,9 @@ function createFreshState(): PlannerState {
 
   return {
     version: 1,
-    tripName: 'Bali, Indonesia',
-    destination: 'Bali, Indonesia',
-    destinationData: {
-      name: 'Bali, Indonesia',
-      formattedAddress: 'Bali, Indonesia',
-      location: { lat: -8.409518, lng: 115.188916 },
-      viewport: { north: -8.0, south: -8.9, east: 115.8, west: 114.4 },
-      photoUrl: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=800&q=80',
-      placeId: 'demo-dest-bali'
-    },
+    tripName: '',
+    destination: '',
+    destinationData: undefined,
     startDate,
     endDate,
     columns: defaultColumns,
@@ -1555,6 +1548,21 @@ function PlannerPage({
   );
 }
 
+function hasSavedItinerary(saved: PlannerState | null): boolean {
+  if (!saved || !saved.destination || !saved.destination.trim()) {
+    return false;
+  }
+  // Ignore the legacy hardcoded default Bali if it has no user-added activities
+  if (
+    saved.destination === 'Bali, Indonesia' &&
+    saved.destinationData?.placeId === 'demo-dest-bali' &&
+    (!saved.cells || Object.values(saved.cells).every((row) => Object.keys(row).length === 0))
+  ) {
+    return false;
+  }
+  return true;
+}
+
 function getPageFromLocation(): PageMode {
   if (typeof window === 'undefined') {
     return 'setup';
@@ -1575,22 +1583,15 @@ function getPageFromLocation(): PageMode {
   }
 
   // Root '/' defaults to planner if a saved itinerary exists, otherwise setup
-  return loadPlannerState() ? 'planner' : 'setup';
+  return hasSavedItinerary(loadPlannerState()) ? 'planner' : 'setup';
 }
 
 function App() {
   const [hydrated, setHydrated] = useState(false);
   const [page, setPage] = useState<PageMode>(getPageFromLocation);
-  const [tripName, setTripName] = useState('Bali, Indonesia');
-  const [destination, setDestination] = useState('Bali, Indonesia');
-  const [destinationData, setDestinationData] = useState<DestinationData | undefined>({
-    name: 'Bali, Indonesia',
-    formattedAddress: 'Bali, Indonesia',
-    location: { lat: -8.409518, lng: 115.188916 },
-    viewport: { north: -8.0, south: -8.9, east: 115.8, west: 114.4 },
-    photoUrl: 'https://images.unsplash.com/photo-1537996194471-e657df975ab4?auto=format&fit=crop&w=800&q=80',
-    placeId: 'demo-dest-bali'
-  });
+  const [tripName, setTripName] = useState('');
+  const [destination, setDestination] = useState('');
+  const [destinationData, setDestinationData] = useState<DestinationData | undefined>(undefined);
   const [startDate, setStartDate] = useState(todayInputValue());
   const [endDate, setEndDate] = useState(addDaysInputValue(todayInputValue(), 4));
   const [columns, setColumns] = useState<PlannerColumn[]>(defaultColumns);
@@ -1620,7 +1621,9 @@ function App() {
   useEffect(() => {
     const saved = loadPlannerState();
 
-    if (saved) {
+    if (saved && !hasSavedItinerary(saved)) {
+      clearPlannerState();
+    } else if (saved && hasSavedItinerary(saved)) {
       setTripName(saved.tripName || saved.destination || '');
       setDestination(saved.destination || saved.tripName || '');
       if (saved.destinationData) {
@@ -1696,7 +1699,7 @@ function App() {
         window.history.replaceState(null, '', '/planner');
       } else if (hash === '#setup') {
         window.history.replaceState(null, '', '/setup');
-      } else if (currentPath === '/' && loadPlannerState()) {
+      } else if (currentPath === '/' && hasSavedItinerary(loadPlannerState())) {
         window.history.replaceState(null, '', '/planner');
       }
     }
@@ -1710,6 +1713,11 @@ function App() {
     }
 
     const timeout = window.setTimeout(() => {
+      // Don't auto-save empty initial state to localStorage
+      if (!destination.trim()) {
+        return;
+      }
+
       const state: PlannerState = {
         version: 1,
         tripName: tripName || destination,

@@ -3,6 +3,7 @@ import { DestinationData, PackingItem, PlannerCellMap, PlannerCommuteMap, CellTy
 import { buildDateRows } from '../utils/date';
 import {
   buildDayOverviews,
+  buildMergedStayCards,
   calculateStayDetails,
   calculateTripAnalytics,
   calculateTripCountdown,
@@ -25,7 +26,7 @@ export interface DashboardViewProps {
   onPackingListChange: (items: PackingItem[]) => void;
   onTripNotesChange: (notes: string) => void;
   onNavigateToPlanner: (dayKey?: string) => void;
-  onNavigateToSetup: () => void;
+  onNavigateToSetup?: () => void;
 }
 
 export function DashboardView({
@@ -42,12 +43,10 @@ export function DashboardView({
   tripNotes = '',
   onPackingListChange,
   onTripNotesChange,
-  onNavigateToPlanner,
-  onNavigateToSetup
+  onNavigateToPlanner
 }: DashboardViewProps) {
   const [selectedMapDayKey, setSelectedMapDayKey] = useState<string>('all');
   const [newPackingText, setNewPackingText] = useState('');
-  const [copiedNotification, setCopiedNotification] = useState(false);
 
   // Derive date rows
   const dateRows = useMemo(() => buildDateRows(startDate, endDate), [startDate, endDate]);
@@ -56,6 +55,12 @@ export function DashboardView({
   const stayDetails = useMemo(
     () => calculateStayDetails(dateRows, rowOrders, cells, cellTypes),
     [dateRows, rowOrders, cells, cellTypes]
+  );
+
+  // Derive merged stay cards (merges consecutive days staying in the same place)
+  const mergedStayCards = useMemo(
+    () => buildMergedStayCards(dateRows, stayDetails.dailyStays),
+    [dateRows, stayDetails.dailyStays]
   );
 
   // Derive trip countdown & status
@@ -110,34 +115,6 @@ export function DashboardView({
     }
   };
 
-  // Copy trip summary to clipboard
-  const handleCopySummary = async () => {
-    const summaryLines: string[] = [
-      `✈️ Trip: ${tripName || destination}`,
-      `📍 Destination: ${destination}`,
-      `📅 Dates: ${startDate} to ${endDate} (${analytics.totalDays} Days / ${analytics.totalNights} Nights)`,
-      `🏨 Accommodations:`,
-      ...stayDetails.uniqueStays.map(
-        (s) => `  • ${s.name} (${s.nights} night${s.nights > 1 ? 's' : ''}: ${s.checkInDayLabel} – ${s.checkOutDayLabel})`
-      ),
-      '',
-      '🗓️ Day-by-Day Plan:',
-      ...dayOverviews.map((day) => {
-        const stopsStr = day.stops.map((s) => s.name).join(' ➔ ');
-        return `Day ${day.dayIndex} (${day.row.label}): Stay at ${day.stay.stayName || 'None set'}${stopsStr ? ` | Stops: ${stopsStr}` : ''}`;
-      })
-    ];
-
-    try {
-      await navigator.clipboard.writeText(summaryLines.join('\n'));
-      setCopiedNotification(true);
-      setTimeout(() => setCopiedNotification(false), 3000);
-    } catch {
-      // Fallback
-      alert('Could not copy automatically. You can print the summary instead!');
-    }
-  };
-
   const handlePrint = () => {
     window.print();
   };
@@ -188,36 +165,13 @@ export function DashboardView({
           <button
             type="button"
             className="secondary-button"
-            onClick={handleCopySummary}
-            title="Copy trip itinerary summary to clipboard"
-          >
-            📋 {copiedNotification ? 'Copied!' : 'Copy Summary'}
-          </button>
-          <button
-            type="button"
-            className="secondary-button"
             onClick={handlePrint}
             title="Print or save itinerary as PDF"
           >
             🖨️ Print / PDF
           </button>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={onNavigateToSetup}
-            title="Edit destination and travel dates"
-          >
-            ⚙️ Trip Details
-          </button>
         </div>
       </header>
-
-      {/* Toast Notification */}
-      {copiedNotification && (
-        <div className="dashboard-toast" role="status">
-          ✅ Trip summary copied to clipboard! Ready to share.
-        </div>
-      )}
 
       {/* Hero Cover Card */}
       <section className="dashboard-hero-card">
@@ -324,7 +278,7 @@ export function DashboardView({
       <div className="dashboard-main-layout">
         <div className="dashboard-left-col">
           {/* SECTION: WHERE WE ARE STAYING (STAY MATRIX) */}
-          <section className="dashboard-section-card">
+          <section className="dashboard-section-card stay-section-card">
             <div className="section-card-header">
               <div>
                 <h2>🏨 Where We Are Staying</h2>
@@ -339,51 +293,68 @@ export function DashboardView({
               </button>
             </div>
 
-            {/* Daily Stay Timeline Chips */}
+            {/* Merged Stay Cards: merges days if staying in same place, horizontal scroll on desktop, stacked vertically on mobile */}
             <div className="stay-timeline-container">
               <div className="stay-timeline-track">
-                {dateRows.map((row, idx) => {
-                  const stayInfo = stayDetails.dailyStays[row.key];
-                  const hasStay = stayInfo?.hasStay;
+                {mergedStayCards.map((card) => {
+                  const isMultiDay = card.nightsCount > 1;
+                  const dayRangeText = isMultiDay
+                    ? `Day ${card.startDayIndex} – Day ${card.endDayIndex}`
+                    : `Day ${card.startDayIndex}`;
+
+                  const dateRangeText = isMultiDay
+                    ? `${card.startRow.label} – ${card.endRow.label}`
+                    : card.startRow.label;
+
+                  const weekdayText = isMultiDay
+                    ? `${card.startRow.weekday.slice(0, 3)} – ${card.endRow.weekday.slice(0, 3)}`
+                    : card.startRow.weekday;
 
                   return (
                     <div
-                      key={row.key}
-                      className={`stay-timeline-day-card ${hasStay ? 'has-stay' : 'empty-stay'} ${stayInfo?.isCheckIn ? 'is-checkin' : ''}`}
+                      key={card.id}
+                      className={`stay-timeline-day-card ${card.hasStay ? 'has-stay' : 'empty-stay'} is-checkin`}
                     >
-                      <div className="stay-day-meta">
-                        <span className="stay-day-number">Day {idx + 1}</span>
-                        <span className="stay-day-date">{row.label}</span>
-                        <span className="stay-day-weekday">{row.weekday}</span>
+                      {/* Heading: Place / Hotel Name */}
+                      <div className="stay-card-header">
+                        <h4 className="stay-hotel-name">
+                          {card.hasStay ? card.stayName : 'No Stay Set'}
+                        </h4>
+
+                        {card.hasStay && (
+                          <div className="stay-badge-row">
+                            <span className="stay-tag checkin-tag">
+                              🏨 {card.nightsCount} Night{card.nightsCount > 1 ? 's' : ''}
+                            </span>
+                            {card.isNextMove && card.nextStayName && (
+                              <span className="stay-tag checkout-tag" title={`Moving to ${card.nextStayName} next`}>
+                                🧳 Next: {card.nextStayName}
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
 
+                      {/* Description: Days, Dates & Address */}
                       <div className="stay-day-content">
-                        {hasStay ? (
-                          <>
-                            <div className="stay-badge-row">
-                              {stayInfo.isCheckIn && (
-                                <span className="stay-tag checkin-tag">🏨 Check-in</span>
-                              )}
-                              {stayInfo.isInherited && (
-                                <span className="stay-tag inherited-tag">🛏️ Continued</span>
-                              )}
-                              {stayInfo.isCheckOutNext && (
-                                <span className="stay-tag checkout-tag">🧳 Next day move</span>
-                              )}
-                            </div>
-                            <h4 className="stay-hotel-name">{stayInfo.stayName}</h4>
-                            {stayInfo.address && (
-                              <p className="stay-hotel-address">{stayInfo.address}</p>
-                            )}
-                          </>
-                        ) : (
+                        <div className="stay-day-meta">
+                          <span className="stay-day-number">{dayRangeText}</span>
+                          <span className="stay-day-date">{dateRangeText}</span>
+                          <span className="stay-day-weekday">{weekdayText}</span>
+                        </div>
+
+                        {card.hasStay && card.address && (
+                          <p className="stay-hotel-address">{card.address}</p>
+                        )}
+
+                        {!card.hasStay && (
                           <div className="stay-empty-placeholder">
                             <span className="stay-empty-icon">⚠️</span>
-                            <span>No stay set</span>
+                            <span>No accommodation set for these dates ({card.nightsCount} night{card.nightsCount > 1 ? 's' : ''})</span>
                             <button
                               type="button"
                               className="text-link-button"
-                              onClick={() => onNavigateToPlanner(row.key)}
+                              onClick={() => onNavigateToPlanner(card.startRow.key)}
                             >
                               + Add stay
                             </button>
@@ -394,66 +365,16 @@ export function DashboardView({
                       <button
                         type="button"
                         className="stay-planner-link"
-                        onClick={() => onNavigateToPlanner(row.key)}
-                        title={`Jump to ${row.label} in planner`}
+                        onClick={() => onNavigateToPlanner(card.startRow.key)}
+                        title={`Jump to ${card.startRow.label} in planner`}
                       >
-                        Edit day in planner ➔
+                        Edit in planner ➔
                       </button>
                     </div>
                   );
                 })}
               </div>
             </div>
-
-            {/* Unique Accommodations Overview */}
-            {stayDetails.uniqueStays.length > 0 && (
-              <div className="unique-stays-wrapper">
-                <h3 className="sub-heading">Properties & Resorts ({stayDetails.uniqueStays.length})</h3>
-                <div className="unique-stays-grid">
-                  {stayDetails.uniqueStays.map((stay) => (
-                    <div key={stay.id} className="unique-stay-card">
-                      {stay.photoUrl ? (
-                        <div
-                          className="unique-stay-thumb"
-                          style={{ backgroundImage: `url(${stay.photoUrl})` }}
-                        />
-                      ) : (
-                        <div className="unique-stay-thumb unique-stay-thumb-fallback">
-                          🏨
-                        </div>
-                      )}
-                      <div className="unique-stay-body">
-                        <div className="unique-stay-nights-badge">
-                          {stay.nights} Night{stay.nights > 1 ? 's' : ''}
-                        </div>
-                        <h4 className="unique-stay-title">{stay.name}</h4>
-                        {stay.address && <p className="unique-stay-address">{stay.address}</p>}
-                        <div className="unique-stay-dates">
-                          {stay.checkInDayLabel} ➔ {stay.checkOutDayLabel}
-                        </div>
-                        <div className="unique-stay-actions">
-                          <a
-                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(stay.name + ' ' + (stay.address || ''))}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="secondary-button unique-stay-link"
-                          >
-                            Directions ↗
-                          </a>
-                          <button
-                            type="button"
-                            className="secondary-button unique-stay-link"
-                            onClick={() => onNavigateToPlanner(stay.checkInDate)}
-                          >
-                            Open in Planner
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </section>
 
           {/* SECTION: DAY-BY-DAY JOURNEY FLOW */}

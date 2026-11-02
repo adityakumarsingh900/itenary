@@ -44,6 +44,24 @@ export interface UniqueStayInfo {
   location?: { lat: number; lng: number };
 }
 
+export interface MergedStayCard {
+  id: string;
+  stayName: string;
+  hasStay: boolean;
+  startDayIndex: number;
+  endDayIndex: number;
+  startRow: DateRow;
+  endRow: DateRow;
+  nightsCount: number;
+  cellValue?: CellValue;
+  address?: string;
+  photoUrl?: string;
+  location?: { lat: number; lng: number };
+  dateKeys: string[];
+  isNextMove: boolean;
+  nextStayName?: string;
+}
+
 export interface StayCalculationResult {
   dailyStays: Record<string, DayStayInfo>;
   uniqueStays: UniqueStayInfo[];
@@ -279,6 +297,107 @@ export function calculateStayDetails(
     missingStayDays,
     totalNights
   };
+}
+
+/**
+ * Merges consecutive days staying at the same accommodation into a single card representation
+ */
+export function buildMergedStayCards(
+  dateRows: DateRow[],
+  dailyStays: Record<string, DayStayInfo>
+): MergedStayCard[] {
+  if (dateRows.length === 0) return [];
+
+  const cards: MergedStayCard[] = [];
+  let currentGroup: {
+    stayName: string;
+    hasStay: boolean;
+    startDayIndex: number;
+    endDayIndex: number;
+    startRow: DateRow;
+    endRow: DateRow;
+    nightsCount: number;
+    cellValue?: CellValue;
+    address?: string;
+    photoUrl?: string;
+    location?: { lat: number; lng: number };
+    dateKeys: string[];
+  } | null = null;
+
+  for (let i = 0; i < dateRows.length; i++) {
+    const row = dateRows[i];
+    const stayInfo = dailyStays[row.key];
+    const hasStay = Boolean(stayInfo?.hasStay);
+    const stayName = stayInfo?.stayName || '';
+
+    // Check if this row continues the current group:
+    // It continues if both have the same stayName and both have stay (or both have no stay)
+    const isSameStay =
+      currentGroup !== null &&
+      currentGroup.hasStay === hasStay &&
+      currentGroup.stayName.toLowerCase().trim() === stayName.toLowerCase().trim();
+
+    if (isSameStay && currentGroup) {
+      currentGroup.endDayIndex = i + 1;
+      currentGroup.endRow = row;
+      currentGroup.nightsCount += 1;
+      currentGroup.dateKeys.push(row.key);
+      if (!currentGroup.cellValue && stayInfo?.cellValue) {
+        currentGroup.cellValue = stayInfo.cellValue;
+      }
+      if (!currentGroup.address && stayInfo?.address) {
+        currentGroup.address = stayInfo.address;
+      }
+      if (!currentGroup.photoUrl && stayInfo?.photoUrl) {
+        currentGroup.photoUrl = stayInfo.photoUrl;
+      }
+      if (!currentGroup.location && stayInfo?.location) {
+        currentGroup.location = stayInfo.location;
+      }
+    } else {
+      if (currentGroup) {
+        cards.push({
+          ...currentGroup,
+          id: `merged-stay-${currentGroup.stayName || 'unassigned'}-${currentGroup.startRow.key}`,
+          isNextMove: false
+        });
+      }
+
+      currentGroup = {
+        stayName,
+        hasStay,
+        startDayIndex: i + 1,
+        endDayIndex: i + 1,
+        startRow: row,
+        endRow: row,
+        nightsCount: 1,
+        cellValue: stayInfo?.cellValue,
+        address: stayInfo?.address,
+        photoUrl: stayInfo?.photoUrl,
+        location: stayInfo?.location,
+        dateKeys: [row.key]
+      };
+    }
+  }
+
+  if (currentGroup) {
+    cards.push({
+      ...currentGroup,
+      id: `merged-stay-${currentGroup.stayName || 'unassigned'}-${currentGroup.startRow.key}`,
+      isNextMove: false
+    });
+  }
+
+  // Second pass: determine isNextMove and nextStayName
+  for (let i = 0; i < cards.length; i++) {
+    const nextCard = i < cards.length - 1 ? cards[i + 1] : null;
+    if (nextCard && nextCard.hasStay && nextCard.stayName !== cards[i].stayName) {
+      cards[i].isNextMove = true;
+      cards[i].nextStayName = nextCard.stayName;
+    }
+  }
+
+  return cards;
 }
 
 /**

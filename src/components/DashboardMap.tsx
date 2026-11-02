@@ -250,7 +250,7 @@ export function DashboardMap({
             All Days ({dayOverviews.length})
           </button>
           {dayOverviews.map((day) => {
-            const dayStopsCount = day.stops.filter((s) => s.location).length;
+            const weekdayShort = day.row.weekday ? day.row.weekday.slice(0, 3) : '';
             return (
               <button
                 key={day.row.key}
@@ -259,8 +259,9 @@ export function DashboardMap({
                 aria-selected={selectedDayKey === day.row.key}
                 className={`dashboard-map-day-pill ${selectedDayKey === day.row.key ? 'active' : ''}`}
                 onClick={() => onSelectDayKey(day.row.key)}
+                title={`Day ${day.dayIndex} (${day.row.weekday}) - ${day.row.label}`}
               >
-                Day {day.dayIndex} {dayStopsCount > 0 ? `(${dayStopsCount})` : ''}
+                Day {day.dayIndex} ({weekdayShort})
               </button>
             );
           })}
